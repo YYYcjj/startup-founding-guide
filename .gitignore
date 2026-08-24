@@ -1,0 +1,6 @@
+# 不提交含敏感信息的文件
+*.key
+*.pem
+secrets.*
+.env
+.DS_Store

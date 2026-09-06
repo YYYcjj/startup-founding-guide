@@ -1,9 +1,9 @@
 # 发布到 GitHub 步骤
 
 > ✅ **状态：已发布（2026-09-06）**
-> 仓库已成功推送至 GitHub，且已设为 **私有（Private）**。
+> 仓库已成功推送至 GitHub，且已设为 **公开（Public）**。
 > 地址：https://github.com/YYYcjj/startup-founding-guide
-> 含 6 个文档 + .gitignore，全部已推送。
+> 结构：三大板块（创业流程 / 家族发展 / 人际发展），已全部推送。
 
 本仓库内容已在本机 `git commit` 完成，只差「推送到 GitHub」这一步授权。
 三种方式任选，推荐方式一。
@@ -72,6 +72,11 @@ git push -u origin main
 ---
 
 ## 当前本地仓库状态
-- 已提交 6 个文件（含 .gitignore）：README.md / 创业必学清单与避坑.md / 家庭健康与关系指南.md / 年轻创业者全攻略.md / 注册清单.md / 发布到GitHub.md
+- 已提交（三大板块结构）：
+  - 根目录：`README.md`（首页导航）/ `年轻创业者全攻略.md`（总纲）/ `发布到GitHub.md`
+  - ① `创业流程/`：01-公司注册全流程.md、02-创业必学清单与避坑.md、03-注册清单.md
+  - ② `家族发展/`：01-家庭与健康规划.md
+  - ③ `人际发展/`：01-交际关系与婚姻.md
+  - 含 `.gitignore`
 - 远程：`https://github.com/YYYcjj/startup-founding-guide.git`（私有，已推送）
 - 推送已通过方式二（classic PAT，带 `repo` 权限）完成，凭据用完即清。

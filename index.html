@@ -229,7 +229,7 @@
     else docEl.insertAdjacentHTML("beforeend", html);
   }
 
-  /* ---------- 页内锚点点击：同文档直接平滑滚动（不重渲染、不触发重路由） ---------- */
+  /* ---------- 页内锚点点击：短距离平滑滚动，长距离直接跳（避免整屏高速掠过/动画打架的乱感） ---------- */
   docEl.addEventListener("click", function (e) {
     var a = e.target.closest ? e.target.closest("a") : null;
     if (!a) return;
@@ -245,7 +245,12 @@
     var el = document.getElementById(id);
     if (!el || !docEl.contains(el)) return;   // 找不到目标 = 跨文档链接，交给默认行为
     e.preventDefault();
-    el.scrollIntoView({ behavior: "smooth", block: "start" });
+    // 目标标题距视口顶部 ~66px（吸顶栏 52 + 留白）
+    var dist = el.getBoundingClientRect().top - 66;
+    window.scrollTo({
+      top: Math.max(0, window.scrollY + dist),
+      behavior: Math.abs(dist) > window.innerHeight * 0.6 ? "auto" : "smooth"
+    });
     try { history.replaceState(null, "", "#/" + enc(curFile) + "#" + encodeURIComponent(id)); } catch (err) {}
   });
   function buildPager(f) {

@@ -4,7 +4,7 @@ window.SITE = {
   title: "年轻创业者行动指南",
   tagline: "开公司 · 稳家族 · 理人际 · 修自己",
   repo: "YYYcjj/startup-founding-guide",
-  home: { t: "首页 · 三板块总览", f: "README.md" },
+  home: { t: "首页 · 四板块总览", f: "README.md" },
   groups: [
     {
       name: "入门",

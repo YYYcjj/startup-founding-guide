@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#d4380d">
+<title>年轻创业者行动指南</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23d4380d'/%3E%3Ctext x='50' y='68' font-size='52' text-anchor='middle' fill='white' font-family='sans-serif'%3E%E5%88%9B%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/style.css">
+<script src="assets/nav.js"></script>
+<script src="assets/vendor/marked.min.js"></script>
+</head>
+<body>
+<div class="progress" id="progress"></div>
+
+<header class="topbar">
+  <button class="icon-btn menu" id="btnMenu" aria-label="菜单">☰</button>
+  <div class="logo"><b>创</b><span class="full">业者行动指南</span></div>
+  <div class="spacer"></div>
+  <div class="search-pill" id="searchPill" role="button" tabindex="0" aria-label="搜索">🔍 搜索文档…</div>
+  <button class="icon-btn" id="btnTheme" aria-label="切换主题" title="切换主题">🌙</button>
+  <button class="icon-btn" id="btnGit" aria-label="GitHub 仓库" title="GitHub 仓库">⌥</button>
+</header>
+
+<div class="scrim" id="scrim"></div>
+<div class="layout">
+  <aside class="side" id="side"></aside>
+  <main class="content">
+    <div class="crumb" id="crumb"></div>
+    <article class="doc" id="doc"><div class="splash"><div class="spin"></div>加载中…</div></article>
+    <div class="pager" id="pager"></div>
+    <footer class="site-foot" id="siteFoot"></footer>
+  </main>
+</div>
+
+<button class="to-top" id="toTop" aria-label="回到顶部">↑</button>
+
+<!-- 搜索面板 -->
+<div class="search-box" id="searchBox">
+  <div class="search-card">
+    <input id="searchInput" type="text" placeholder="输入关键词搜索全文（支持中文）…" autocomplete="off">
+    <div class="search-results" id="searchResults"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var S = window.SITE, FLAT = window.FLAT;
+  var cache = {};          // path -> {text, html, title}
+  var curFile = null;
+  var $ = function (id) { return document.getElementById(id); };
+  var docEl = $("doc"), crumbEl = $("crumb"), pagerEl = $("pager"), sideEl = $("side");
+  var lastSearchQuery = "";
+
+  /* ---------- 主题 ---------- */
+  var THEME_KEY = "sg-theme";
+  function applyTheme(t) {
+    document.documentElement.setAttribute("data-theme", t);
+    $("btnTheme").textContent = t === "dark" ? "☀️" : "🌙";
+    try { localStorage.setItem(THEME_KEY, t); } catch (e) {}
+  }
+  (function initTheme() {
+    var saved = null; try { saved = localStorage.getItem(THEME_KEY); } catch (e) {}
+    var t = saved || (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    applyTheme(t);
+  })();
+  $("btnTheme").onclick = function () {
+    var cur = document.documentElement.getAttribute("data-theme");
+    applyTheme(cur === "dark" ? "light" : "dark");
+  };
+
+  /* ---------- 路径编码（中文路径） ---------- */
+  function enc(f) {
+    return f.split("/").map(encodeURIComponent).join("/");
+  }
+
+  /* ---------- 侧栏 ---------- */
+  function buildNav() {
+    var h = "";
+    h += '<div class="group"><a class="item" data-f="' + S.home.f + '" href="#/' + enc(S.home.f) + '">🏠 ' + S.home.t + '</a></div>';
+    S.groups.forEach(function (g) {
+      h += '<div class="group"><div class="group-name">' + g.name + "</div>";
+      g.items.forEach(function (it) {
+        h += '<a class="item" data-f="' + it.f + '" href="#/' + enc(it.f) + '">' + it.t + "</a>";
+      });
+      h += "</div>";
+    });
+    sideEl.innerHTML = h;
+    sideEl.addEventListener("click", function (e) {
+      var a = e.target.closest("a.item");
+      if (a) closeNav();
+    });
+  }
+  function setActive(f) {
+    var items = sideEl.querySelectorAll("a.item");
+    for (var i = 0; i < items.length; i++) {
+      items[i].classList.toggle("active", items[i].getAttribute("data-f") === f);
+    }
+  }
+  /* 移动端抽屉 */
+  function openNav() { document.body.classList.add("nav-open"); }
+  function closeNav() { document.body.classList.remove("nav-open"); }
+  $("btnMenu").onclick = openNav;
+  $("scrim").onclick = closeNav;
+  window.addEventListener("resize", function () { if (innerWidth > 900) closeNav(); });
+
+  /* ---------- Markdown 渲染配置 ---------- */
+  marked.setOptions({ gfm: true, breaks: false });
+  /* 站内相对链接规范化：把 md 里相对「所在目录」的链接解析回仓库根路径 */
+  var curSegs = [];   // 当前文档所在目录的路径段，如 ['公司'] / []
+  function normJoin(rel) {
+    var seg = curSegs.slice();
+    rel.split("/").forEach(function (p) {
+      if (!p || p === ".") return;
+      if (p === "..") { if (seg.length) seg.pop(); }
+      else seg.push(p);
+    });
+    return seg.join("/");
+  }
+  var renderer = new marked.Renderer();
+  renderer.link = function (href, title, text) {
+    if (!href) return text;
+    if (/^https?:|^mailto:/i.test(href)) {
+      return '<a href="' + href + '" target="_blank" rel="noopener"' + (title ? ' title="' + title + '"' : "") + ">" + text + "</a>";
+    }
+    if (href.charAt(0) === "#") {   // 同页锚点
+      return '<a href="' + href + '"' + (title ? ' title="' + title + '"' : "") + ">" + text + "</a>";
+    }
+    var target = normJoin(href);    // 站内相对 → 仓库根路径
+    var isMd = /\.md$/i.test(target);
+    return '<a href="' + (isMd ? "#/" + enc(target) : enc(target)) + '"' + (title ? ' title="' + title + '"' : "") + ">" + text + "</a>";
+  };
+  renderer.image = function (href, title, text) {
+    var src = /^https?:/i.test(href) ? href : enc(normJoin(href));
+    return '<img src="' + src + '" alt="' + (text || "") + '"' + (title ? ' title="' + title + '"' : "") + ">";
+  };
+  marked.setOptions({ renderer: renderer });
+
+  /* ---------- 文档加载 ---------- */
+  function guessTitle(text) {
+    var m = text.match(/^#\s+(.+)$/m);
+    return m ? m[1].trim() : "";
+  }
+  function fetchDoc(f) {
+    return fetch(enc(f), { cache: "no-store" }).then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.text();
+    });
+  }
+  function ensure(f) {
+    if (cache[f]) return Promise.resolve(cache[f]);
+    return fetchDoc(f).then(function (text) {
+      var title = guessTitle(text);
+      curSegs = f.indexOf("/") >= 0 ? f.split("/").slice(0, -1) : [];
+      var html = marked.parse(text);
+      cache[f] = { text: text, html: html, title: title };
+      return cache[f];
+    });
+  }
+  function docLinkText(f) {
+    for (var i = 0; i < FLAT.length; i++) if (FLAT[i].f === f) return FLAT[i].t;
+    return f.replace(/\.md$/, "");
+  }
+  function load(f, fromHash) {
+    var promise;
+    if (curFile === f && cache[f]) promise = Promise.resolve(cache[f]);
+    else promise = ensure(f);
+    if (!fromHash && history.replaceState) {
+      try { history.replaceState(null, "", "#/" + enc(f)); } catch (e) {}
+    }
+    promise.then(function (d) {
+      curFile = f;
+      setActive(f);
+      var siteT = "年轻创业者行动指南";
+      document.title = d.title && d.title !== siteT ? d.title + " · " + siteT : siteT;
+      crumbEl.innerHTML = crumbFor(d.title);
+      docEl.innerHTML = d.html;
+      injectIds();
+      buildToc(d);
+      buildPager(f);
+      markSearch();
+      window.scrollTo(0, 0);
+      // 记住位置（含锚点）
+      var key = "sg-last"; try { localStorage.setItem(key, f); } catch (e) {}
+      var anchor = location.hash.replace(/^#\/.*?(?=#|$)/, "");
+      if (anchor && fromHash) {
+        var el = document.getElementById(decodeURIComponent(anchor.slice(1)));
+        if (el) setTimeout(function () { el.scrollIntoView(); }, 30);
+      }
+    }).catch(function (err) {
+      docEl.innerHTML = '<div class="doc-error">😵 文档加载失败：' + f + "<br><span style='font-size:12px'>" + err.message + "</span></div>";
+    });
+  }
+  function crumbFor(title) {
+    return '<a href="#/">🏠 首页</a> ／ <span>' + (title || "") + "</span>";
+  }
+  /* 给 h1-h3 加锚点 id（兼容 GitHub 中文锚点命名） */
+  function slug(s) {
+    return s.trim().toLowerCase().replace(/[^\w\u4e00-\u9fa5]+/g, "-").replace(/^-+|-+$/g, "") || "sec";
+  }
+  function injectIds() {
+    var hs = docEl.querySelectorAll("h1, h2, h3");
+    var used = {};
+    hs.forEach(function (h) {
+      var base = slug(h.textContent);
+      var id = base, n = 1;
+      while (used[id]) { id = base + "-" + (++n); }
+      used[id] = 1;
+      h.id = id;
+    });
+  }
+  function buildToc(d) {
+    var old = docEl.querySelector(".toc-box");
+    if (old) old.remove();
+    var hs = docEl.querySelectorAll("h2, h3");
+    if (hs.length < 3) return;
+    var html = "<details class='toc-box' open><summary>📑 本文目录</summary><ul>";
+    hs.forEach(function (h) {
+      var lv = h.tagName === "H2" ? "lv2" : "lv3";
+      html += "<li class='" + lv + "'><a href='#" + h.id + "'>" + h.textContent + "</a></li>";
+    });
+    html += "</ul></details>";
+    var firstH2 = docEl.querySelector("h2");
+    if (firstH2) firstH2.insertAdjacentHTML("beforebegin", html);
+    else docEl.insertAdjacentHTML("beforeend", html);
+  }
+  function buildPager(f) {
+    var idx = -1;
+    for (var i = 0; i < FLAT.length; i++) if (FLAT[i].f === f) { idx = i; break; }
+    var prev = idx > 0 ? FLAT[idx - 1] : null;
+    var next = idx >= 0 && idx < FLAT.length - 1 ? FLAT[idx + 1] : null;
+    var h = "";
+    if (prev) h += '<a href="#/' + enc(prev.f) + '"><span class="dir">← 上一篇</span><span class="tt">' + prev.t + "</span></a>";
+    else h += "<a style='visibility:hidden'></a>";
+    if (next) h += '<a href="#/' + enc(next.f) + '"><span class="dir">下一篇 →</span><span class="tt">' + next.t + "</span></a>";
+    pagerEl.innerHTML = h;
+  }
+
+  /* ---------- 全文搜索 ---------- */
+  var allDocsReady = false;
+  function preloadAll() {
+    var ps = FLAT.map(function (it) { return ensure(it.f).catch(function () {}); });
+    return Promise.all(ps).then(function () { allDocsReady = true; });
+  }
+  function ctxSnippet(text, q, max) {
+    var idx = text.indexOf(q);
+    if (idx < 0) return "";
+    var start = Math.max(0, idx - max);
+    var end = Math.min(text.length, idx + q.length + max);
+    var s = text.slice(start, end).replace(/[#*`>|]/g, "").replace(/\s+/g, " ");
+    if (start > 0) s = "…" + s;
+    if (end < text.length) s = s + "…";
+    return s;
+  }
+  function doSearch(q) {
+    var box = $("searchResults");
+    q = q.trim();
+    lastSearchQuery = q;
+    if (!q) { box.innerHTML = '<div class="none">输入关键词，全文即时搜索</div>'; return; }
+    var results = [];
+    FLAT.forEach(function (it) {
+      var d = cache[it.f];
+      if (!d) return;
+      var low = d.text.toLowerCase(), lq = q.toLowerCase();
+      var idx = low.indexOf(lq);
+      if (idx < 0) return;
+      results.push({ t: it.t, f: it.f, g: it.g, snip: ctxSnippet(d.text, low, 60) });
+    });
+    if (!results.length) { box.innerHTML = '<div class="none">没有匹配「' + q + '」的内容，换个关键词试试</div>'; return; }
+    var h = "";
+    results.forEach(function (r) {
+      h += '<a href="#/' + enc(r.f) + '" data-q="' + q.replace(/"/g, "&quot;") + '">'
+         + '<div class="r-t">' + r.t + '</div>'
+         + '<div class="r-f">' + (r.g || "首页") + "</div>"
+         + '<div class="r-s">' + r.snip + "</div></a>";
+    });
+    box.innerHTML = h;
+  }
+  /* 打开搜索 */
+  function openSearch() { $("searchBox").classList.add("open"); setTimeout(function () { $("searchInput").focus(); }, 30); if (!allDocsReady) preloadAll(); }
+  function closeSearch() { $("searchBox").classList.remove("open"); }
+  $("searchPill").onclick = openSearch;
+  $("searchBox").addEventListener("click", function (e) { if (e.target === $("searchBox")) closeSearch(); });
+  document.addEventListener("keydown", function (e) {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); openSearch(); }
+    if (e.key === "Escape") { closeSearch(); closeNav(); }
+  });
+  var deb;
+  $("searchInput").addEventListener("input", function () {
+    clearTimeout(deb);
+    var v = this.value;
+    deb = setTimeout(function () { doSearch(v); }, 180);
+  });
+  $("searchResults").addEventListener("click", function (e) {
+    var a = e.target.closest("a");
+    if (!a) return;
+    closeSearch();
+    $("searchInput").value = "";
+  });
+  /* 搜索命中高亮（跳转后给一段标记） */
+  function markSearch() {
+    var q = lastSearchQuery;
+    if (!q) return;
+    var low = q.toLowerCase();
+    // 只在文档可见文本节点做高亮，避开已渲染的脚本/样式
+    var nodes = docEl.querySelectorAll("p, li, td, h2, h3, blockquote");
+    var replaced = 0;
+    nodes.forEach(function (n) {
+      if (replaced > 8 || n.querySelector("mark")) return;
+      var walker = document.createTreeWalker(n, NodeFilter.SHOW_TEXT, null);
+      var texts = [];
+      var node;
+      while ((node = walker.nextNode())) {
+        var idx = node.nodeValue.toLowerCase().indexOf(low);
+        if (idx >= 0) texts.push({ node: node, idx: idx });
+      }
+      // 从后往前替换
+      texts.reverse().forEach(function (t) {
+        var v = t.node.nodeValue;
+        var m = document.createElement("mark");
+        m.textContent = v.substr(t.idx, q.length);
+        var frag = document.createDocumentFragment();
+        frag.appendChild(document.createTextNode(v.substr(0, t.idx)));
+        frag.appendChild(m);
+        frag.appendChild(document.createTextNode(v.substr(t.idx + q.length)));
+        t.node.parentNode.replaceChild(frag, t.node);
+        replaced++;
+      });
+    });
+  }
+
+  /* ---------- 滚动进度 & 回顶 ---------- */
+  function onScroll() {
+    var h = document.documentElement;
+    var max = h.scrollHeight - innerHeight;
+    var p = max > 0 ? (h.scrollTop / max) * 100 : 0;
+    $("progress").style.width = p + "%";
+    $("toTop").classList.toggle("show", h.scrollTop > 600);
+  }
+  window.addEventListener("scroll", onScroll, { passive: true });
+  onScroll();
+  $("toTop").onclick = function () { window.scrollTo({ top: 0, behavior: "smooth" }); };
+
+  /* ---------- 页脚 ---------- */
+  $("siteFoot").innerHTML = '年轻创业者行动指南 · 开源于 <a href="https://github.com/' + S.repo + '" target="_blank" rel="noopener">GitHub / ' + S.repo + "</a> · 内容为通用参考，不构成专业意见";
+
+  /* ---------- 路由：所有加载统一走这里，避免首屏与 hashchange 双路径竞争 ---------- */
+  function route() {
+    var h = location.hash || "";
+    var m = h.match(/^#\/(.+?)(?:#(.+))?$/);
+    var f = null;
+    if (m) {
+      try { f = decodeURIComponent(m[1]); } catch (e) { f = m[1]; }
+      f = f.split("?")[0];
+      if (!f) f = S.home.f;
+    } else {
+      f = S.home.f;
+    }
+    load(f, true);
+  }
+  window.addEventListener("hashchange", route);
+
+  /* ---------- GitHub 按钮 ---------- */
+  $("btnGit").onclick = function () { window.open("https://github.com/" + S.repo, "_blank"); };
+
+  /* ---------- 启动：先渲染当前页，再后台预热全部文档（站点体量小，便于搜索） ---------- */
+  buildNav();
+  route();
+  setTimeout(preloadAll, 900);
+})();
+</script>
+</body>
+</html>

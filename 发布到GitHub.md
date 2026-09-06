@@ -45,15 +45,24 @@ https://github.com/YYYcjj/startup-founding-guide
 
 ---
 
-## 方式三：网页手动建仓 + 本地 push（不推荐）
+## 方式三：网页手动建仓 + 本地 push
 
-1. 打开 https://github.com/new ，手动新建仓库 `startup-founding-guide`（选 Private）
-2. 本地执行：
+> ⚠️ 实测：本机 SSH key（id_ed25519）未注册到 GitHub（`Permission denied (publickey)`），
+> 故无法从本环境直接 SSH 推送。请在**你自己的 Mac 终端**完成下面步骤（用你已登录的 GitHub 凭证）。
+
+1. 打开 https://github.com/new ，手动新建仓库 `startup-founding-guide`：
+   - 设为 **Private**
+   - **不要**勾选 "Add a README file" / .gitignore / license（保持空仓库，因为本地已有内容）
+   - 点 **Create repository**
+2. 在你自己的 Mac 终端进入仓库目录并推送：
 ```bash
+cd /Users/yyy/WorkBuddy/2026-08-24-19-28-16/startup-founding-guide
 git remote set-url origin https://github.com/YYYcjj/startup-founding-guide.git
 git push -u origin main
 ```
-（需本机已登录 GitHub 凭证或配置 SSH key）
+3. 若 push 要求输入账号密码：GitHub 已停用密码登录，**密码处填 PAT**（在 https://github.com/settings/tokens 生成、勾 repo 权限）；或用 `gh auth login` 登录后直接 push。
+
+> 最省事替代：把 PAT 交给助手，助手用 HTTPS 从本环境直接推送（无需你跑命令）。
 
 ---
 

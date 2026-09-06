@@ -185,7 +185,9 @@
       var key = "sg-last"; try { localStorage.setItem(key, f); } catch (e) {}
       var anchor = location.hash.replace(/^#\/.*?(?=#|$)/, "");
       if (anchor && fromHash) {
-        var el = document.getElementById(decodeURIComponent(anchor.slice(1)));
+        var aId = null;
+        try { aId = decodeURIComponent(anchor.slice(1)); } catch (err) { aId = anchor.slice(1); }
+        var el = document.getElementById(aId);
         if (el) setTimeout(function () { el.scrollIntoView(); }, 30);
       }
     }).catch(function (err) {
@@ -218,13 +220,34 @@
     var html = "<details class='toc-box' open><summary>📑 本文目录</summary><ul>";
     hs.forEach(function (h) {
       var lv = h.tagName === "H2" ? "lv2" : "lv3";
-      html += "<li class='" + lv + "'><a href='#" + h.id + "'>" + h.textContent + "</a></li>";
+      // 链接用站点路由格式 #/文件.md#锚点：新标签打开/深链也能正确落到锚点，不会把 hash 顶掉而跳回首页
+      html += "<li class='" + lv + "'><a href='#/" + enc(curFile) + "#" + encodeURIComponent(h.id) + "'>" + h.textContent + "</a></li>";
     });
     html += "</ul></details>";
     var firstH2 = docEl.querySelector("h2");
     if (firstH2) firstH2.insertAdjacentHTML("beforebegin", html);
     else docEl.insertAdjacentHTML("beforeend", html);
   }
+
+  /* ---------- 页内锚点点击：同文档直接平滑滚动（不重渲染、不触发重路由） ---------- */
+  docEl.addEventListener("click", function (e) {
+    var a = e.target.closest ? e.target.closest("a") : null;
+    if (!a) return;
+    var h = a.getAttribute("href") || "";
+    var id = null;
+    var m2 = h.match(/^#\/[^#]*#([\s\S]+)$/);           // #/文件.md#锚点
+    if (m2) {
+      try { id = decodeURIComponent(m2[1]); } catch (err) { id = m2[1]; }
+    } else if (h.charAt(0) === "#" && h.indexOf("#/") !== 0) {  // 裸 #锚点
+      try { id = decodeURIComponent(h.slice(1)); } catch (err) { id = h.slice(1); }
+    }
+    if (!id) return;
+    var el = document.getElementById(id);
+    if (!el || !docEl.contains(el)) return;   // 找不到目标 = 跨文档链接，交给默认行为
+    e.preventDefault();
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+    try { history.replaceState(null, "", "#/" + enc(curFile) + "#" + encodeURIComponent(id)); } catch (err) {}
+  });
   function buildPager(f) {
     var idx = -1;
     for (var i = 0; i < FLAT.length; i++) if (FLAT[i].f === f) { idx = i; break; }

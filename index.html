@@ -90,12 +90,36 @@
     return f.split("/").map(encodeURIComponent).join("/");
   }
 
+  /* ---------- 板块识别：取路径首段，用于按板块换色 ---------- */
+  var SECS = ["公司", "家族", "个人与人际", "未来与投资", "附录"];
+  function secOf(f) {
+    var g = (f || "").split("/")[0];
+    return SECS.indexOf(g) >= 0 ? g : "";
+  }
+  function setPageSec(f) {
+    var s = secOf(f);
+    if (s) document.documentElement.setAttribute("data-sec", s);
+    else document.documentElement.removeAttribute("data-sec");
+  }
+  /* 给指向各板块的站内链接打色标 —— 一眼看出这条链接跳到哪个板块 */
+  function tagLinks() {
+    var as = docEl.querySelectorAll("a[href]");
+    for (var i = 0; i < as.length; i++) {
+      var m = (as[i].getAttribute("href") || "").match(/^#\/([^#]+)/);
+      if (!m) continue;
+      var p; try { p = decodeURIComponent(m[1]); } catch (e) { p = m[1]; }
+      var s = secOf(p);
+      if (s) as[i].setAttribute("data-sec", s);
+    }
+  }
+
   /* ---------- 侧栏 ---------- */
   function buildNav() {
     var h = "";
     h += '<div class="group"><a class="item" data-f="' + S.home.f + '" href="#/' + enc(S.home.f) + '">' + S.home.t + '</a></div>';
     S.groups.forEach(function (g) {
-      h += '<div class="group"><div class="group-name">' + g.name + "</div>";
+      var sk = secOf(g.items.length ? g.items[0].f : "");
+      h += '<div class="group"' + (sk ? ' data-sec="' + sk + '"' : "") + '><div class="group-name">' + g.name + "</div>";
       g.items.forEach(function (it) {
         h += '<a class="item" data-f="' + it.f + '" href="#/' + enc(it.f) + '">' + it.t + "</a>";
       });
@@ -186,6 +210,7 @@
     }
     promise.then(function (d) {
       curFile = f;
+      setPageSec(f);            // 整页换色：标题/链接/表头/进度条/背景光晕全部跟随
       setActive(f);
       var siteT = "年轻创业者行动指南";
       document.title = d.title && d.title !== siteT ? d.title + " · " + siteT : siteT;
@@ -193,6 +218,7 @@
       docEl.innerHTML = d.html;
       injectIds();
       buildToc(d);
+      tagLinks();
       buildPager(f);
       markSearch();
       window.scrollTo(0, 0);
@@ -210,6 +236,7 @@
       // 友好化：不再只丢一行报错，给出可点的出口（回首页 / 去搜索 / 看同类文档）
       if (io) io.disconnect();
       curFile = null;
+      setPageSec("");
       setActive("");
       crumbEl.innerHTML = crumbFor("未找到");
       pagerEl.innerHTML = "";

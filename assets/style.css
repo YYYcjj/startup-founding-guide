@@ -14,15 +14,15 @@
   --text-2: #b7c7db;
   --text-3: #8b9db4;
 
-  /* —— 霓虹 —— */
-  --neon: #22d3ee;          /* 青 */
-  --neon-2: #7c6cff;        /* 紫 */
-  --neon-3: #34f5c5;        /* 薄荷 */
+  /* —— 霓虹：只定这两个色，其余全部派生，便于按板块整体换色 —— */
+  --neon: #22d3ee;          /* 主色 */
+  --neon-2: #7c6cff;        /* 副色（渐变尾） */
+  --neon-3: color-mix(in srgb, var(--neon) 72%, #ffffff);   /* 亮版：代码文字 */
   --accent: var(--neon);
   --accent-2: var(--neon-2);
-  --accent-soft: rgba(34, 211, 238, .12);
-  --glow: rgba(34, 211, 238, .40);
-  --glow-2: rgba(124, 108, 255, .36);
+  --accent-soft: color-mix(in srgb, var(--neon) 12%, transparent);
+  --glow: color-mix(in srgb, var(--neon) 40%, transparent);
+  --glow-2: color-mix(in srgb, var(--neon-2) 36%, transparent);
 
   --grid: rgba(130, 200, 255, .06);
   --shine: linear-gradient(90deg, var(--neon), var(--neon-2));
@@ -47,14 +47,33 @@
   --text-3: #8296ab;
   --neon: #0891b2;
   --neon-2: #6d4aff;
-  --neon-3: #0d9488;
-  --accent: #0891b2;
-  --accent-2: #6d4aff;
-  --accent-soft: rgba(8, 145, 178, .09);
-  --glow: rgba(8, 145, 178, .22);
-  --glow-2: rgba(109, 74, 255, .18);
+  --neon-3: color-mix(in srgb, var(--neon) 80%, #052e3a);
+  --accent: var(--neon);
+  --accent-2: var(--neon-2);
+  --accent-soft: color-mix(in srgb, var(--neon) 9%, transparent);
+  --glow: color-mix(in srgb, var(--neon) 22%, transparent);
+  --glow-2: color-mix(in srgb, var(--neon-2) 18%, transparent);
   --grid: rgba(20, 90, 150, .05);
 }
+
+/* ============================================================
+   板块配色：只覆盖 --neon / --neon-2，glow / accent-soft / neon-3
+   等全部由 color-mix 派生，因此整套页面配色会自动跟随。
+   规则选择器不带元素限定，所以 body、侧栏 .group 等任意节点
+   都能通过 data-sec 局部换色。
+   ============================================================ */
+[data-sec="公司"]       { --neon: #22d3ee; --neon-2: #7c6cff; }  /* 青 → 紫：商业科技 */
+[data-sec="家族"]       { --neon: #f472b6; --neon-2: #c084fc; }  /* 粉 → 紫：温情 */
+[data-sec="个人与人际"]  { --neon: #34f5c5; --neon-2: #22d3ee; }  /* 薄荷 → 青：成长 */
+[data-sec="未来与投资"]  { --neon: #fbbf24; --neon-2: #fb923c; }  /* 金 → 橙：资本 */
+[data-sec="附录"]       { --neon: #a78bfa; --neon-2: #7c6cff; }  /* 紫 → 靛：工具 */
+
+/* 浅色主题下的板块色：同一色相压深，保证白底可读 */
+[data-theme="light"][data-sec="公司"]       { --neon: #0891b2; --neon-2: #6d4aff; }
+[data-theme="light"][data-sec="家族"]       { --neon: #db2777; --neon-2: #9333ea; }
+[data-theme="light"][data-sec="个人与人际"]  { --neon: #0d9488; --neon-2: #0891b2; }
+[data-theme="light"][data-sec="未来与投资"]  { --neon: #b45309; --neon-2: #ea580c; }
+[data-theme="light"][data-sec="附录"]       { --neon: #7c3aed; --neon-2: #6d4aff; }
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
@@ -62,11 +81,11 @@ html, body { margin: 0; padding: 0; }
 body {
   color: var(--text);
   background-color: var(--bg);
-  /* 跟随指针的环境光 + 两处霓虹光晕 + 网格地平线 */
+  /* 跟随指针的环境光 + 两处霓虹光晕 + 网格地平线（随板块换色） */
   background-image:
-    radial-gradient(460px 460px at var(--mx) var(--my), rgba(34, 211, 238, .16), transparent 62%),
-    radial-gradient(760px 400px at 12% -8%, rgba(34, 211, 238, .15), transparent 64%),
-    radial-gradient(720px 380px at 88% -6%, rgba(124, 108, 255, .15), transparent 64%),
+    radial-gradient(460px 460px at var(--mx) var(--my), color-mix(in srgb, var(--neon) 16%, transparent), transparent 62%),
+    radial-gradient(760px 400px at 12% -8%, color-mix(in srgb, var(--neon) 15%, transparent), transparent 64%),
+    radial-gradient(720px 380px at 88% -6%, color-mix(in srgb, var(--neon-2) 15%, transparent), transparent 64%),
     linear-gradient(var(--grid) 1px, transparent 1px),
     linear-gradient(90deg, var(--grid) 1px, transparent 1px);
   background-size: 100% 100%, 100% 100%, 100% 100%, 34px 34px, 34px 34px;
@@ -79,9 +98,9 @@ body {
 }
 [data-theme="light"] body {
   background-image:
-    radial-gradient(460px 460px at var(--mx) var(--my), rgba(8, 145, 178, .10), transparent 62%),
-    radial-gradient(720px 380px at 12% -8%, rgba(8, 145, 178, .07), transparent 62%),
-    radial-gradient(680px 360px at 88% -6%, rgba(109, 74, 255, .06), transparent 62%),
+    radial-gradient(460px 460px at var(--mx) var(--my), color-mix(in srgb, var(--neon) 10%, transparent), transparent 62%),
+    radial-gradient(720px 380px at 12% -8%, color-mix(in srgb, var(--neon) 7%, transparent), transparent 62%),
+    radial-gradient(680px 360px at 88% -6%, color-mix(in srgb, var(--neon-2) 6%, transparent), transparent 62%),
     linear-gradient(var(--grid) 1px, transparent 1px),
     linear-gradient(90deg, var(--grid) 1px, transparent 1px);
 }
@@ -91,7 +110,9 @@ body {
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, rgba(34, 211, 238, .5), rgba(124, 108, 255, .5));
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--neon) 50%, transparent),
+    color-mix(in srgb, var(--neon-2) 50%, transparent));
   border-radius: 9px; border: 3px solid var(--bg);
 }
 ::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, var(--neon), var(--neon-2)); }
@@ -189,17 +210,23 @@ main.content {
 .side .group { margin-bottom: 2px; }
 .side .group-name {
   font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em;
-  color: var(--text-3); padding: 15px 10px 7px; font-weight: 500;
+  /* 分组标题染上本板块色（淡），// 前缀用纯色，一眼分辨四大板块 */
+  color: color-mix(in srgb, var(--neon) 46%, var(--text-3));
+  padding: 15px 10px 7px; font-weight: 500;
   text-transform: uppercase;
 }
-.side .group-name::before { content: "// "; color: var(--neon); opacity: .7; }
+.side .group-name::before { content: "// "; color: var(--neon); opacity: .85; }
 .side a.item {
   display: block; padding: 6px 10px; margin: 1px 0;
   border-left: 2px solid transparent;
   color: var(--text-2); text-decoration: none; font-size: 13.5px; line-height: 1.45;
   transition: color .16s, background .16s, border-color .16s, box-shadow .16s;
 }
-.side a.item:hover { color: var(--text); background: color-mix(in srgb, var(--panel) 85%, transparent); }
+.side a.item:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--panel) 85%, transparent);
+  border-left-color: color-mix(in srgb, var(--neon) 55%, transparent);
+}
 .side a.item.active {
   color: var(--neon); background: var(--accent-soft);
   border-left-color: var(--neon); font-weight: 500;
@@ -225,7 +252,7 @@ body.nav-open aside.side { transform: translateX(0); }
   margin: 6px 0 20px; padding-bottom: 14px;
   border-bottom: 1px solid var(--border);
   position: relative;
-  text-shadow: 0 0 26px rgba(34, 211, 238, .09);
+  text-shadow: 0 0 26px color-mix(in srgb, var(--neon) 9%, transparent);
 }
 .doc h1::after {
   content: ""; position: absolute; left: 0; bottom: -1px; width: 92px; height: 2px;
@@ -417,7 +444,7 @@ footer.site-foot a:hover { color: var(--neon); }
   background: var(--panel);
   border: 1px solid color-mix(in srgb, var(--neon) 30%, var(--border));
   border-radius: 5px; overflow: hidden;
-  box-shadow: 0 0 0 1px rgba(34, 211, 238, .12), 0 26px 70px rgba(0, 0, 0, .6), 0 0 60px -20px var(--glow);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--neon) 12%, transparent), 0 26px 70px rgba(0, 0, 0, .6), 0 0 60px -20px var(--glow);
 }
 .search-card input {
   width: 100%; border: none; outline: none; padding: 15px 17px;

@@ -196,6 +196,7 @@
       buildPager(f);
       markSearch();
       window.scrollTo(0, 0);
+      armReveal();
       // 记住位置（含锚点）
       var key = "sg-last"; try { localStorage.setItem(key, f); } catch (e) {}
       var anchor = location.hash.replace(/^#\/.*?(?=#|$)/, "");
@@ -207,6 +208,7 @@
       }
     }).catch(function (err) {
       // 友好化：不再只丢一行报错，给出可点的出口（回首页 / 去搜索 / 看同类文档）
+      if (io) io.disconnect();
       curFile = null;
       setActive("");
       crumbEl.innerHTML = crumbFor("未找到");
@@ -395,6 +397,44 @@
         replaced++;
       });
     });
+  }
+
+  /* ---------- FX：指针环境光（仅精细指针设备，触摸端自动跳过） ---------- */
+  (function envGlow() {
+    if (!window.matchMedia || !matchMedia("(hover: hover) and (pointer: fine)").matches) return;
+    var raf = 0, x = 50, y = -10;
+    window.addEventListener("pointermove", function (e) {
+      x = (e.clientX / innerWidth) * 100;
+      y = (e.clientY / innerHeight) * 100;
+      if (raf) return;                       // rAF 节流，避免高频重绘
+      raf = requestAnimationFrame(function () {
+        raf = 0;
+        var st = document.documentElement.style;
+        st.setProperty("--mx", x.toFixed(2) + "%");
+        st.setProperty("--my", y.toFixed(2) + "%");
+      });
+    }, { passive: true });
+  })();
+
+  /* ---------- FX：滚动逐个显现 ---------- */
+  var reduceMotion = !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
+  var io = null;
+  if (!reduceMotion && "IntersectionObserver" in window) {
+    io = new IntersectionObserver(function (ents) {
+      for (var i = 0; i < ents.length; i++) {
+        if (ents[i].isIntersecting) { ents[i].target.classList.add("in"); io.unobserve(ents[i].target); }
+      }
+    }, { rootMargin: "0px 0px -6% 0px", threshold: 0.01 });
+  }
+  function armReveal() {
+    if (!io) return;                          // 无 observer / 用户要求减少动效 → 内容常显
+    io.disconnect();
+    var kids = docEl.children;
+    for (var i = 0; i < kids.length; i++) {
+      if (i < 2) continue;                    // 首屏最上方两块不位移，避免开场闪动
+      kids[i].classList.add("reveal");
+      io.observe(kids[i]);
+    }
   }
 
   /* ---------- 滚动进度 & 回顶 ---------- */

@@ -3,9 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#d4380d">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0a0c10" media="(prefers-color-scheme: dark)">
 <title>年轻创业者行动指南</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23d4380d'/%3E%3Ctext x='50' y='68' font-size='52' text-anchor='middle' fill='white' font-family='sans-serif'%3E%E5%88%9B%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='18' fill='%230d1117'/%3E%3Crect x='6' y='6' width='88' height='88' rx='13' fill='none' stroke='%232563eb' stroke-width='5'/%3E%3Ctext x='50' y='67' font-size='46' text-anchor='middle' fill='%23ffffff' font-family='monospace'%3E创%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/style.css">
 <script src="assets/nav.js"></script>
 <script src="assets/vendor/marked.min.js"></script>
@@ -14,12 +15,22 @@
 <div class="progress" id="progress"></div>
 
 <header class="topbar">
-  <button class="icon-btn menu" id="btnMenu" aria-label="菜单">☰</button>
+  <button class="icon-btn menu" id="btnMenu" aria-label="菜单">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+  </button>
   <div class="logo"><b>创</b><span class="full">业者行动指南</span></div>
   <div class="spacer"></div>
-  <div class="search-pill" id="searchPill" role="button" tabindex="0" aria-label="搜索">🔍 搜索文档…</div>
-  <button class="icon-btn" id="btnTheme" aria-label="切换主题" title="切换主题">🌙</button>
-  <button class="icon-btn" id="btnGit" aria-label="GitHub 仓库" title="GitHub 仓库">⌥</button>
+  <div class="search-pill" id="searchPill" role="button" tabindex="0" aria-label="搜索">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5 21 21"/></svg>
+    <span>搜索文档</span><span class="kbd">⌘K</span>
+  </div>
+  <button class="icon-btn" id="btnTheme" aria-label="切换主题" title="切换主题">
+    <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>
+    <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.4M12 19.6V22M2 12h2.4M19.6 12H22M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M19.1 4.9l-1.7 1.7M6.6 17.4l-1.7 1.7"/></svg>
+  </button>
+  <button class="icon-btn" id="btnGit" aria-label="GitHub 仓库" title="GitHub 仓库">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.1-1.47-1.1-1.47-.9-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.88 1.52 2.31 1.08 2.87.83.09-.64.35-1.08.63-1.33-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.5 9.5 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></svg>
+  </button>
 </header>
 
 <div class="scrim" id="scrim"></div>
@@ -57,7 +68,10 @@
   var THEME_KEY = "sg-theme";
   function applyTheme(t) {
     document.documentElement.setAttribute("data-theme", t);
-    $("btnTheme").textContent = t === "dark" ? "☀️" : "🌙";
+    var btn = $("btnTheme");
+    var label = t === "dark" ? "切换到浅色" : "切换到深色";
+    btn.setAttribute("aria-label", label);
+    btn.setAttribute("title", label);
     try { localStorage.setItem(THEME_KEY, t); } catch (e) {}
   }
   (function initTheme() {
@@ -78,7 +92,7 @@
   /* ---------- 侧栏 ---------- */
   function buildNav() {
     var h = "";
-    h += '<div class="group"><a class="item" data-f="' + S.home.f + '" href="#/' + enc(S.home.f) + '">🏠 ' + S.home.t + '</a></div>';
+    h += '<div class="group"><a class="item" data-f="' + S.home.f + '" href="#/' + enc(S.home.f) + '">' + S.home.t + '</a></div>';
     S.groups.forEach(function (g) {
       h += '<div class="group"><div class="group-name">' + g.name + "</div>";
       g.items.forEach(function (it) {
@@ -191,11 +205,11 @@
         if (el) setTimeout(function () { el.scrollIntoView(); }, 30);
       }
     }).catch(function (err) {
-      docEl.innerHTML = '<div class="doc-error">😵 文档加载失败：' + f + "<br><span style='font-size:12px'>" + err.message + "</span></div>";
+      docEl.innerHTML = '<div class="doc-error">文档加载失败：' + f + "<br><span style='font-size:12px'>" + err.message + "</span></div>";
     });
   }
   function crumbFor(title) {
-    return '<a href="#/">🏠 首页</a> ／ <span>' + (title || "") + "</span>";
+    return '<a href="#/">首页</a> / <span>' + (title || "") + "</span>";
   }
   /* 给 h1-h3 加锚点 id（兼容 GitHub 中文锚点命名） */
   function slug(s) {
@@ -217,7 +231,7 @@
     if (old) old.remove();
     var hs = docEl.querySelectorAll("h2, h3");
     if (hs.length < 3) return;
-    var html = "<details class='toc-box' open><summary>📑 本文目录</summary><ul>";
+    var html = "<details class='toc-box' open><summary>目录 · CONTENTS</summary><ul>";
     hs.forEach(function (h) {
       var lv = h.tagName === "H2" ? "lv2" : "lv3";
       // 链接用站点路由格式 #/文件.md#锚点：新标签打开/深链也能正确落到锚点，不会把 hash 顶掉而跳回首页

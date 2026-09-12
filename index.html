@@ -205,7 +205,31 @@
         if (el) setTimeout(function () { el.scrollIntoView(); }, 30);
       }
     }).catch(function (err) {
-      docEl.innerHTML = '<div class="doc-error">文档加载失败：' + f + "<br><span style='font-size:12px'>" + err.message + "</span></div>";
+      // 友好化：不再只丢一行报错，给出可点的出口（回首页 / 去搜索 / 看同类文档）
+      curFile = null;
+      setActive("");
+      crumbEl.innerHTML = crumbFor("未找到");
+      pagerEl.innerHTML = "";
+      document.title = "未找到 · 年轻创业者行动指南";
+      var guess = f.replace(/\.md$/i, "").split("/").pop().replace(/^\d+-/, "");
+      docEl.innerHTML =
+        '<div class="doc-error">' +
+          '<div class="err-code">404</div>' +
+          '<div class="err-title">找不到这篇文档</div>' +
+          '<div class="err-path">' + f + "</div>" +
+          '<div class="err-hint">可能是链接拼写有误，或这篇内容被改名/移动过。</div>' +
+          '<div class="err-acts">' +
+            '<a class="err-btn primary" href="#/">返回首页</a>' +
+            '<a class="err-btn" href="#" id="errSearch">搜索「' + guess + '」</a>' +
+          "</div>" +
+        "</div>";
+      var sb = $("errSearch");
+      if (sb) sb.onclick = function (ev) {
+        ev.preventDefault();
+        openSearch();
+        $("searchInput").value = guess;
+        doSearch(guess);
+      };
     });
   }
   function crumbFor(title) {

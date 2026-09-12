@@ -295,7 +295,30 @@ footer.site-foot a:hover { color: var(--accent); }
   animation: r .7s linear infinite;
 }
 @keyframes r { to { transform: rotate(360deg); } }
-.doc-error { text-align: center; padding: 60px 20px; color: var(--text-2); font-family: var(--mono); }
+.doc-error { text-align: center; padding: 56px 20px; color: var(--text-2); }
+.doc-error .err-code {
+  font-family: var(--mono); font-size: 48px; font-weight: 300; line-height: 1; letter-spacing: .04em;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: var(--accent);
+}
+.doc-error .err-title { font-size: 17px; font-weight: 600; color: var(--text); margin: 16px 0 10px; }
+.doc-error .err-path {
+  font-family: var(--mono); font-size: 12px; color: var(--text-3);
+  background: var(--bg-code); border: 1px solid var(--border); border-radius: 4px;
+  padding: 7px 10px; margin: 0 auto 12px; max-width: 420px; word-break: break-all;
+}
+.doc-error .err-hint { font-size: 13px; color: var(--text-3); }
+.doc-error .err-acts { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 20px; }
+.doc-error a.err-btn {
+  display: inline-flex; align-items: center; padding: 8px 14px;
+  border: 1px solid var(--border); border-radius: 4px; text-decoration: none;
+  color: var(--text-2); border-bottom: 1px solid var(--border);
+  font-family: var(--mono); font-size: 12.5px;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.doc-error a.err-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.doc-error a.err-btn.primary { border-color: var(--accent); color: var(--accent); }
 
 /* 回到顶部 */
 .to-top {

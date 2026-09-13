@@ -4,3 +4,6 @@
 secrets.*
 .env
 .DS_Store
+
+# 本地校验脚本/笔记，不发布
+.workbuddy/

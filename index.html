@@ -804,6 +804,81 @@
       }
     };
 
+    /* —— 彗尾的几何：把采样折线重建成一条光滑的变宽带 ——
+       要让尾巴真的是"曲线"，有两件事必须一起做，缺一个都不像：
+       ① 采样点之间不能直接 lineTo。鼠标划弧时每过一个采样点方向就突变一次，
+          RIB=26 个点就是 26 个折角，整条尾巴其实是一段多边形。
+       ② 更不能"逐段独立 stroke + round 端头"。采样步长 STEP=5px 比最大线宽
+          (10.3px) 还小，圆头半径 5.15px 却往 5px 的段上套 —— 外缘会鼓成一串
+          半圆（扇贝边），线宽越大越像毛毛虫。
+       所以走"中心线 → 轮廓 → 一次 fill"这条路：
+         Catmull-Rom 细分（切线连续）→ 沿法线按宽度函数偏移出左右两条轮廓
+         → 闭合成带 → 单次 fill。外缘因此是真正光滑的曲线，宽度也能是任意
+         函数（现在是指数收束：尾尖收成一点、靠舰体端最粗）。
+       每帧约 400 次 lineTo 的路径构建，比原来 52 次 stroke 还便宜。 */
+    var SUB = 4;                       // 每段细分刀数：26 个采样点 → 101 个密点
+    var subX = [], subY = [];          // 细分结果（预分配，避免每帧新建数组）
+    var lpx = [], lpy = [], rpx = [], rpy = [];   // 左右轮廓点
+
+    /* 把 n 个采样点插成 (n-1)*SUB+1 个密集点，写入 subX/subY 并返回点数。
+       标准 Catmull-Rom（张力 .5）在段内参数化求值：
+         p(f) = [2p₁ + (−p₀+p₂)f + (2p₀−5p₁+4p₂−p₃)f² + (−p₀+3p₁−3p₂+p₃)f³] / 2
+       端点缺邻居时用自身顶替 —— 自然边界，不外插，尾巴两端不会甩出去。 */
+    function subdivide(flat, n) {
+      var p = 0, s, k, f, f2, f3;
+      for (s = 0; s < n - 1; s++) {
+        var x0 = s > 0 ? flat[s * 2 - 2] : flat[0];
+        var y0 = s > 0 ? flat[s * 2 - 1] : flat[1];
+        var x1 = flat[s * 2], y1 = flat[s * 2 + 1];
+        var x2 = flat[s * 2 + 2], y2 = flat[s * 2 + 3];
+        var x3 = s + 2 < n ? flat[s * 2 + 4] : x2;
+        var y3 = s + 2 < n ? flat[s * 2 + 5] : y2;
+        for (k = 0; k < SUB; k++) {
+          f = k / SUB; f2 = f * f; f3 = f2 * f;
+          subX[p] = .5 * (2 * x1 + (x2 - x0) * f
+                          + (2 * x0 - 5 * x1 + 4 * x2 - x3) * f2
+                          + (3 * x1 - x0 - 3 * x2 + x3) * f3);
+          subY[p] = .5 * (2 * y1 + (y2 - y0) * f
+                          + (2 * y0 - 5 * y1 + 4 * y2 - y3) * f2
+                          + (3 * y1 - y0 - 3 * y2 + y3) * f3);
+          p++;
+        }
+      }
+      subX[p] = flat[(n - 1) * 2]; subY[p] = flat[(n - 1) * 2 + 1];
+      return p + 1;
+    }
+
+    /* 沿中心线填一条变宽带。w0/w1 = 尾尖 / 靠舰体端的线宽（直径），
+       pow 控制宽度增长曲线（<1 前段就变粗，>1 靠近舰体才收束），
+       c = [r,g,b]，a0/a1 = 尾尖 / 靠舰体端的透明度。
+       渐变用两端点连一条直线近似（尾巴才一百多像素，弯曲带来的偏差肉眼看
+       不出来），中点 stop 取 (a1−a0)*.3 —— 模拟原来 t² 的平方增长。 */
+    function ribbon(M, w0, w1, pow, c, a0, a1) {
+      var i, u, hw, ax, ay, bx, by, tx, ty, tl, nx, ny;
+      for (i = 0; i < M; i++) {
+        u = i / (M - 1);
+        hw = (w0 + (w1 - w0) * Math.pow(u, pow)) * .5;
+        ax = subX[i > 0 ? i - 1 : 0];          ay = subY[i > 0 ? i - 1 : 0];
+        bx = subX[i < M - 1 ? i + 1 : M - 1];  by = subY[i < M - 1 ? i + 1 : M - 1];
+        tx = bx - ax; ty = by - ay;
+        tl = Math.sqrt(tx * tx + ty * ty) || 1;
+        nx = -ty / tl; ny = tx / tl;                       // 单位左法线
+        lpx[i] = subX[i] + nx * hw; lpy[i] = subY[i] + ny * hw;
+        rpx[i] = subX[i] - nx * hw; rpy[i] = subY[i] - ny * hw;
+      }
+      ctx.beginPath();
+      ctx.moveTo(lpx[0], lpy[0]);
+      for (i = 1; i < M; i++) ctx.lineTo(lpx[i], lpy[i]);          // 左轮廓正向
+      for (i = M - 1; i >= 0; i--) ctx.lineTo(rpx[i], rpy[i]);     // 右轮廓反向
+      ctx.closePath();
+      var g = ctx.createLinearGradient(subX[0], subY[0], subX[M - 1], subY[M - 1]);
+      g.addColorStop(0, rgb(c, a0));
+      g.addColorStop(.55, rgb(c, a0 + (a1 - a0) * .3));
+      g.addColorStop(1, rgb(c, a1));
+      ctx.fillStyle = g;
+      ctx.fill();
+    }
+
     /* —— 星舰：局部坐标原点在舰体几何中心，+X = 舰首方向 ——
        结构分三层画，靠交界线读成"飞船"而不是"图形符号"：
          双翼 = 大后掠三角翼（舰首 16.0 / 翼尖 -5.5 ±11.3 / 尾段 -10.8）
@@ -1069,28 +1144,23 @@
       var light = html.getAttribute("data-theme") === "light";
       ctx.globalCompositeOperation = light ? "source-over" : "lighter";
 
-      /* ① 彗尾：两层描边 —— 外层次级色光晕（宽而淡），内层主色芯（细而亮） */
+      /* ① 彗尾：沿一条光滑中心线收束的双层能量带（几何见上面的 subdivide/ribbon）
+             采样点先做一次 1-2-1 平滑再插值：鼠标坐标本身是量化 + 抖动的，
+             直接当控制点会让曲线沿路起毛刺。只在绘制用的副本上算 —— 写回 rib
+             的话每帧都会再平滑一遍，尾巴会越缩越短。
+             然后细分 → 偏移 → fill：外层次级色（宽而淡，弥散的能量场），
+             内层主色（细而亮，这条才是"轨迹"本身）。 */
       var n = rib.length / 2;
       if (n > 2) {
-        ctx.lineCap = "round";
-        for (i = 1; i < n; i++) {
-          t = i / n;
-          ctx.strokeStyle = rgb(col2, t * t * (light ? .1 : .2) * a + .005);
-          ctx.lineWidth = t * 9.5 + .8;
-          ctx.beginPath();
-          ctx.moveTo(rib[(i - 1) * 2], rib[(i - 1) * 2 + 1]);
-          ctx.lineTo(rib[i * 2], rib[i * 2 + 1]);
-          ctx.stroke();
+        var flat = [], i3;
+        for (i3 = 0; i3 < n; i3++) { flat[i3 * 2] = rib[i3 * 2]; flat[i3 * 2 + 1] = rib[i3 * 2 + 1]; }
+        for (i3 = 1; i3 < n - 1; i3++) {
+          flat[i3 * 2]     = (rib[(i3 - 1) * 2]     + 2 * rib[i3 * 2]     + rib[(i3 + 1) * 2])     * .25;
+          flat[i3 * 2 + 1] = (rib[(i3 - 1) * 2 + 1] + 2 * rib[i3 * 2 + 1] + rib[(i3 + 1) * 2 + 1]) * .25;
         }
-        for (i = 1; i < n; i++) {
-          t = i / n;
-          ctx.strokeStyle = rgb(col, t * t * (light ? .34 : .5) * a + .012);
-          ctx.lineWidth = t * 3.4 + .3;
-          ctx.beginPath();
-          ctx.moveTo(rib[(i - 1) * 2], rib[(i - 1) * 2 + 1]);
-          ctx.lineTo(rib[i * 2], rib[i * 2 + 1]);
-          ctx.stroke();
-        }
+        var M = subdivide(flat, n);
+        ribbon(M, 1.0, 10.6, .88, col2, .004, (light ? .12 : .22) * a);
+        ribbon(M, 0.5,  3.9, .88, col,  .008, (light ? .36 : .52) * a);
       }
 
       /* ② 星舰：就是光标本体。舰体中心钉在指针上，舰首朝航向偏转，

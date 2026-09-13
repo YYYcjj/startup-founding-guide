@@ -678,8 +678,18 @@ body::after {
 }
 
 /* —— 光标光尾：粒子彗尾 + 能量核 + 点击火花（canvas 绘制，触摸端不加载） —— */
-.fx-trail { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
+/* 它现在就是光标本体，必须压过顶栏(50)/搜索框(80)/进度条(100)，
+   但仍让位于扫描线(9000)、换页冲击波(9500)与开机自检(9800)。 */
+.fx-trail { position: fixed; inset: 0; z-index: 8700; pointer-events: none; }
 [data-theme="light"] .fx-trail { opacity: .8; }
+
+/* —— 原生指针接管：能量核就是光标，系统箭头让位 ——
+     这个类**只由 JS 在确认 canvas 已真实出帧之后**才挂上（带心跳降级），
+     所以脚本挂掉、渲染卡死、或用户离开视口时，系统箭头都会自动回来。 */
+html.fx-cursor, html.fx-cursor * { cursor: none !important; }
+/* 输入类元素例外：文本插入点必须看得见，否则没法定位光标 */
+html.fx-cursor input, html.fx-cursor textarea,
+html.fx-cursor [contenteditable="true"], html.fx-cursor [contenteditable=""] { cursor: text !important; }
 
 /* —— 换页冲击波：一条能量带自上而下扫过一次 —— */
 .fx-wipe {

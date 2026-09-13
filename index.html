@@ -572,9 +572,12 @@
     });
   })();
 
-  /* ---------- FX：光标光尾（取代旧十字准星；仅精细指针设备） ----------
-     头部带惯性追随指针 —— 彗尾 + 旋转能量核；停下约 1.7s 后自然敛去并休眠。
-     点击时炸开一圈火星，与 CSS 涟漪叠加。 */
+  /* ---------- FX：光标光尾（接管原生指针；仅精细指针设备） ----------
+     能量核 = 光标本体：坐标严格贴合真实指针（不留滞后，所以敢隐藏系统箭头，
+     否则"看到的位置"和"点到的位置"会差一截）。身后拖一条按"行进距离"采样的
+     双色彗尾；停下 0.4s 尾巴收干，1.7s 后转入极简待机（只留一枚淡核 + 降到 25fps）
+     —— 系统箭头既已让位，光标就必须始终看得见。
+     html.fx-cursor 只在 canvas 确认出过帧之后才挂上，另有心跳兜底还原。 */
   var fxSparks = null;                       // 暴露给点击处理器
   (function trail() {
     var cv = $("fxTrail");
@@ -584,88 +587,127 @@
     var ctx = cv.getContext && cv.getContext("2d");
     if (!ctx) { cv.remove(); return; }
 
+    var html = document.documentElement;
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
-    var W = 0, H = 0, raf = 0, live = true, tf = 0, idle = 1e9;
-    var col = [34, 211, 238], colT = 0;
-    var tx = -1e4, ty = -1e4, hx = -1e4, hy = -1e4, hA = 0, hot = 0, hoverHot = false;
-    var rib = [], lx = -1e4, ly = -1e4, parts = [], last = 0;
-    var MAXP = 170, RIB = 22, IDLE = 1700, STEP = 6;   // 尾长(点) / 静止多久后敛去(ms) / 采样步长(px)
+    var W = 0, H = 0, handle = 0, usingTimer = false, live = true, tf = 0, idle = 1e9, beat = 0;
+    var col = [34, 211, 238], col2 = [124, 108, 255], colT = 0;
+    var x = -1e4, y = -1e4;                    // 真实指针坐标：核钉在这里，绝不留滞后
+    var px = -1e4, py = -1e4;                  // 上一帧核位置 → 算速度与朝向
+    var a = 0, hot = 0, press = 0, pulse = 0, shrink = 0, last = 0, slowPrev = false;
+    var hovLink = false, hovText = false, down = false;
+    var rib = [], parts = [];
+    var MAXP = 190, RIB = 26, IDLE = 1700, STEP = 5;   // 尾长(点) / 静止多久(ms) / 采样步长(px)
 
-    function rgb(a) { return "rgba(" + col[0] + "," + col[1] + "," + col[2] + "," + a + ")"; }
-
+    function rgb(c, al) { return "rgba(" + c[0] + "," + c[1] + "," + c[2] + "," + al + ")"; }
+    function pick(v) {
+      var m = (v || "").trim().match(/^#([0-9a-f]{6})$/i);
+      if (!m) return null;
+      var n = parseInt(m[1], 16);
+      return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    }
     function readColor() {
-      var v = getComputedStyle(document.documentElement).getPropertyValue("--neon").trim();
-      var m = v.match(/^#([0-9a-f]{6})$/i);
-      if (m) { var n = parseInt(m[1], 16); col = [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+      var cs = getComputedStyle(html);
+      var c1 = pick(cs.getPropertyValue("--neon")), c2 = pick(cs.getPropertyValue("--neon-2"));
+      if (c1) col = c1;
+      if (c2) col2 = c2;
     }
     function size() {
       W = innerWidth; H = innerHeight;
       cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
       cv.style.width = W + "px"; cv.style.height = H + "px";
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);   // 尺寸变化会重置变换，必须重设
-      rib.length = 0; lx = ly = -1e4;
+      rib.length = 0;
     }
-    function spawn(x, y, vx, vy, t, s, w) {
+    function spawn(sx, sy, vx, vy, t, s, w) {
       if (parts.length >= MAXP) parts.shift();
-      parts.push({ x: x, y: y, vx: vx, vy: vy, t: t, m: t, s: s, w: w ? 1 : 0 });
+      parts.push({ x: sx, y: sy, vx: vx, vy: vy, t: t, m: t, s: s, w: w ? 1 : 0 });
     }
     /* 火花爆：点击处向四周炸开（深色底用叠加发光，浅色底改用正常混合才看得见） */
     fxSparks = function (cx, cy, n) {
       for (var i = 0; i < (n || 18); i++) {
-        var a = Math.random() * 6.2832, sp = Math.random() * 3.6 + 1.1;
-        spawn(cx, cy, Math.cos(a) * sp, Math.sin(a) * sp,
+        var ang = Math.random() * 6.2832, spd = Math.random() * 3.6 + 1.1;
+        spawn(cx, cy, Math.cos(ang) * spd, Math.sin(ang) * spd,
               26 + Math.random() * 30, Math.random() * 1.6 + 1.1, Math.random() < .35);
       }
     };
 
+    /* 待机：指针还在页面里、但已静止且特效收净 → 只保留淡核，降频省电 */
+    function isSlow() { return x > -1e3 && idle > IDLE && !parts.length && a < .02; }
+
     function frame() {
-      raf = 0;
+      handle = 0;
       if (!live) return;
-      /* 时间归一：所有插值都换算成"相对 60Hz 的倍率"，在 120Hz ProMotion 屏上手感才一致 */
+      beat++;
+      /* 时间归一：所有插值换算成"相对 60Hz 的倍率"，120Hz ProMotion 上手感才一致 */
       var now = performance.now();
-      var dt = Math.min(64, now - last);       // 切后台回来时不让时间一次性暴冲
+      var dt = Math.min(64, now - last);
       var k = Math.max(.25, dt / 16.67);
       last = now;
-      var kA = 1 - Math.pow(.9, k);            // 淡入淡出 / 呼吸
-      var kH = 1 - Math.pow(.7, k);            // 头部追随（60Hz 下为 0.3）
-      var kD = Math.pow(.93, k);               // 火星摩擦
+      var kA = 1 - Math.pow(.9, k);
+      var kH = 1 - Math.pow(.7, k);
+      var kP = 1 - Math.pow(.78, k);
+      var kD = Math.pow(.93, k);
       tf += k;
       if (now - colT > 480) { colT = now; readColor(); }
-      ctx.clearRect(0, 0, W, H);
 
       idle += dt;
-      var i, p;
-      var dx = tx - hx, dy = ty - hy;
+      var slow = isSlow();
+      /* 待机时只清核周围一小块，不必每帧全屏 clearRect */
+      if (slow && slowPrev) ctx.clearRect(x - 100, y - 100, 200, 200);
+      else ctx.clearRect(0, 0, W, H);
+      slowPrev = slow;
 
-      /* 头部惯性追随指针：只走一部分，落差即尾部张力；跨屏瞬移不拉丝 */
-      if (tx > -1e3) {
-        if (hx < -1e3 || (dx * dx + dy * dy) > 250 * 250) { hx = tx; hy = ty; rib.length = 0; lx = ly = -1e4; }
-        hx += dx * kH; hy += dy * kH;
+      var i, p, t;
+      var on = x > -1e3 && idle < IDLE;
+      a += ((on ? 1 : 0) - a) * kA;
+
+      /* 指针已离开视口且特效收净 → 清屏停帧（此时系统箭头已还给用户） */
+      if (x < -1e3 && !parts.length && a < .006) { ctx.clearRect(0, 0, W, H); return; }
+
+      /* 速度与朝向：用真实指针的帧间位移，按 60Hz 归一 */
+      var vx = 0, vy = 0, sp = 0;
+      if (x > -1e3 && px > -1e3) {
+        vx = (x - px) / k; vy = (y - py) / k;
+        sp = Math.sqrt(vx * vx + vy * vy);
+        if (sp > 240) rib.length = 0;            // 跨屏瞬移不拉丝
       }
-      var sp = hx < -1e3 ? 0 : Math.sqrt(dx * dx + dy * dy);
-      var on = hx > -1e3 && idle < IDLE;
-      hA += ((on ? 1 : 0) - hA) * kA;
+      px = x; py = y;
 
-      /* 轨迹采样：按"走过的距离"落点（不是按帧），尾巴长度就不会随刷新率变长变短 */
-      if (hA > .02 && hx > -1e3) {
-        var mx = hx - lx, my = hy - ly;
-        if (mx * mx + my * my > STEP * STEP) {
-          rib.push(hx, hy); lx = hx; ly = hy;
+      /* 轨迹：按"走过的距离"落点，尾巴长度与刷新率彻底解耦 */
+      if (a > .02 && x > -1e3) {
+        var n0 = rib.length;
+        var ddx = n0 ? x - rib[n0 - 2] : 1e4, ddy = n0 ? y - rib[n0 - 1] : 1e4;
+        if (!n0 || ddx * ddx + ddy * ddy > STEP * STEP) {
+          rib.push(x, y);
           if (rib.length > RIB * 2) { rib.shift(); rib.shift(); }
+          shrink = 0;
+        } else if (idle > 110) {
+          /* 停下：不是原地淡出，而是尾巴从末端"收干"回去 —— 约 0.4s 收完 */
+          shrink = Math.min(shrink + (RIB / 400) * dt, 2);
+          while (shrink >= 1 && rib.length > 2) { rib.shift(); rib.shift(); shrink -= 1; }
         }
-      } else if (hA <= .02) { rib.length = 0; lx = ly = -1e4; }
+      } else if (a <= .02) { rib.length = 0; }
 
-      ctx.globalCompositeOperation =
-        document.documentElement.getAttribute("data-theme") === "light" ? "source-over" : "lighter";
+      var light = html.getAttribute("data-theme") === "light";
+      ctx.globalCompositeOperation = light ? "source-over" : "lighter";
 
-      /* ① 彗尾：自头至尾逐段变细变淡 */
+      /* ① 彗尾：两层描边 —— 外层次级色光晕（宽而淡），内层主色芯（细而亮） */
       var n = rib.length / 2;
       if (n > 2) {
         ctx.lineCap = "round";
         for (i = 1; i < n; i++) {
-          var t = i / n;
-          ctx.strokeStyle = rgb(t * t * .46 * hA + .012);
-          ctx.lineWidth = t * 5 + .35;
+          t = i / n;
+          ctx.strokeStyle = rgb(col2, t * t * (light ? .1 : .2) * a + .005);
+          ctx.lineWidth = t * 9.5 + .8;
+          ctx.beginPath();
+          ctx.moveTo(rib[(i - 1) * 2], rib[(i - 1) * 2 + 1]);
+          ctx.lineTo(rib[i * 2], rib[i * 2 + 1]);
+          ctx.stroke();
+        }
+        for (i = 1; i < n; i++) {
+          t = i / n;
+          ctx.strokeStyle = rgb(col, t * t * (light ? .34 : .5) * a + .012);
+          ctx.lineWidth = t * 3.4 + .3;
           ctx.beginPath();
           ctx.moveTo(rib[(i - 1) * 2], rib[(i - 1) * 2 + 1]);
           ctx.lineTo(rib[i * 2], rib[i * 2 + 1]);
@@ -673,36 +715,89 @@
         }
       }
 
-      /* ② 能量核：外圈柔光 + 旋转弧 + 芯点；压在可点元素上时"锁定"放大 */
-      if (hA > .015 && hx > -1e3) {
-        hot += ((hoverHot ? 1 : 0) - hot) * (1 - Math.pow(.84, k));
-        var g = ctx.createRadialGradient(hx, hy, 0, hx, hy, 58);
-        g.addColorStop(0, rgb((.17 + .1 * hot) * hA));
-        g.addColorStop(.42, rgb(.06 * hA));
-        g.addColorStop(1, rgb(0));
-        ctx.fillStyle = g;
-        ctx.beginPath(); ctx.arc(hx, hy, 58, 0, 6.2832); ctx.fill();
+      /* ② 能量核：就是光标本体。细实环给出"光标边界"（替代系统箭头的作用），
+            旋转刻弧表示在线，悬停到链接/按钮上长出 4 道锁定刻度，快速移动时沿运动方向拉长 */
+      if (x > -1e3) {
+        hot += ((hovLink ? 1 : 0) - hot) * kH;
+        press += ((down ? 1 : 0) - press) * kP;
+        var txt = hovText ? 1 : 0;                       // 在输入框里：退让成一小点
+        var sc = (1 - .28 * txt) * (1 + .24 * hot - .14 * press);
+        var str = Math.min(1, sp / 30);
 
-        var seg = 3 + (hot > .5 ? 1 : 0);
-        var rot = tf * .02, r0 = 11.5 + 3.2 * hot + Math.sin(tf * .045) * 1.1;
-        ctx.strokeStyle = rgb((.5 + .4 * hot) * hA); ctx.lineWidth = 1 + hot * .4;
-        for (i = 0; i < seg; i++) {
-          var a0 = rot + i * (6.2832 / seg);
-          ctx.beginPath(); ctx.arc(hx, hy, r0, a0, a0 + 1.5 - .9 * hot); ctx.stroke();
+        /* 外圈柔光（活跃时才有） */
+        if (a > .05) {
+          var R = 62 * sc;
+          var g = ctx.createRadialGradient(x, y, 0, x, y, R);
+          g.addColorStop(0, rgb(col, (.16 + .15 * hot) * a * (1 - .6 * txt)));
+          g.addColorStop(.42, rgb(col, .055 * a));
+          g.addColorStop(1, rgb(col, 0));
+          ctx.fillStyle = g;
+          ctx.beginPath(); ctx.arc(x, y, R, 0, 6.2832); ctx.fill();
+
+          /* 雷达脉冲：每 2.6s 一圈向外扩散的淡环，像在持续扫描 */
+          pulse += dt / 2600; if (pulse > 1) pulse -= 1;
+          if (pulse < .62) {
+            ctx.strokeStyle = rgb(col, (1 - pulse / .62) * .26 * a * (1 - txt));
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.arc(x, y, 13 + pulse * 64, 0, 6.2832); ctx.stroke();
+          }
         }
-        ctx.fillStyle = "rgba(255,255,255," + ((.8 + .2 * hot) * hA) + ")";
-        ctx.beginPath(); ctx.arc(hx, hy, 1.6 + hot * .8, 0, 6.2832); ctx.fill();
+
+        ctx.save();
+        ctx.translate(x, y);
+        if (str > .06 && !txt) {                         // 沿运动方向弹性拉伸
+          ctx.rotate(Math.atan2(vy, vx));
+          ctx.scale(1 + str * .55, 1 - str * .2);
+        }
+        var vis = .34 + .66 * a;
+        var r0 = (10.5 + 3.4 * hot - 1.8 * press) * sc * (1 + Math.sin(tf * .045) * .05);
+
+        /* 细实环：始终存在（待机时也留一圈，让人看得到"这是光标"） */
+        ctx.strokeStyle = rgb(col, (.19 + .42 * a + .2 * hot) * vis);
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(0, 0, r0 * .62, 0, 6.2832); ctx.stroke();
+
+        /* 旋转刻弧 */
+        if (a > .05) {
+          var seg = 3 + (hot > .5 ? 1 : 0);
+          ctx.strokeStyle = rgb(col, (.55 + .38 * hot) * a);
+          ctx.lineWidth = 1.2 + hot * .5;
+          for (i = 0; i < seg; i++) {
+            var a0 = tf * .022 + i * (6.2832 / seg);
+            ctx.beginPath(); ctx.arc(0, 0, r0, a0, a0 + 1.45 - .85 * hot); ctx.stroke();
+          }
+        }
+
+        /* 锁定刻度：压到可点元素上时，四向各伸一道短线 */
+        if (hot > .2) {
+          var gap = r0 + 5.5, len = 2.5 + 3.5 * hot;
+          ctx.strokeStyle = rgb(col, .85 * a * hot);
+          ctx.lineWidth = 1.2;
+          for (i = 0; i < 4; i++) {
+            var aa = i * 1.5708 + Math.PI / 4, ca = Math.cos(aa), sa = Math.sin(aa);
+            ctx.beginPath();
+            ctx.moveTo(ca * gap, sa * gap);
+            ctx.lineTo(ca * (gap + len), sa * (gap + len));
+            ctx.stroke();
+          }
+        }
+        ctx.restore();
+
+        /* 芯点：不参与拉伸/缩放，单独画 —— 它就是"指到哪"的精确答案 */
+        var core = (.7 + .3 * a) * (1 - .25 * txt);
+        ctx.fillStyle = light ? rgb(col, .92 * core) : "rgba(255,255,255," + (core * (1 + .1 * hot)) + ")";
+        ctx.beginPath(); ctx.arc(x, y, 1.7 + hot * .9 - .5 * txt, 0, 6.2832); ctx.fill();
       }
 
-      /* ③ 行进时向后甩火星：方向由位移定（限制在后向 ±63° 锥角），快则溅得远 */
-      if (on && hA > .35 && sp > 1.3) {
-        var back = Math.atan2(dy, dx) + Math.PI;
+      /* ③ 行进时向后甩火星：方向由位移定（后向 ±63° 锥角），快则溅得远 */
+      if (on && a > .35 && sp > 1.2) {
+        var back = Math.atan2(vy, vx) + Math.PI;
         var cnt = Math.round(Math.min(5, 1 + (sp / 3.5 | 0)) * Math.min(2, k));
         for (i = 0; i < cnt; i++) {
-          var a = back + (Math.random() - .5) * 2.2;
+          var ang2 = back + (Math.random() - .5) * 2.2;
           var m = (Math.random() * .8 + .35) * Math.min(6, sp * .55 + .8);
-          spawn(hx + (Math.random() - .5) * 4, hy + (Math.random() - .5) * 4,
-                Math.cos(a) * m, Math.sin(a) * m,
+          spawn(x + (Math.random() - .5) * 4, y + (Math.random() - .5) * 4,
+                Math.cos(ang2) * m, Math.sin(ang2) * m,
                 24 + Math.random() * 26, Math.random() * 1.5 + .9,
                 Math.random() < .28);
         }
@@ -715,29 +810,62 @@
         p.vx *= kD; p.vy = p.vy * kD + .012 * k;    // 轻微下坠，像散落火星
         if ((p.t -= k) <= 0) { parts.splice(i, 1); continue; }
         var fade = p.t / p.m;
-        ctx.fillStyle = p.w ? "rgba(255,255,255," + (fade * .62) + ")" : rgb(fade * .78);
+        ctx.fillStyle = p.w ? "rgba(255,255,255," + (fade * .62) + ")" : rgb(col, fade * .78);
         ctx.fillRect(p.x - p.s / 2, p.y - p.s / 2, p.s, p.s);
       }
 
-      /* 完全静止 → 清屏并休眠，不空转烧电（下一次指针移动自动唤醒） */
-      if (hA < .012 && !parts.length && idle > IDLE + 400) { ctx.clearRect(0, 0, W, H); return; }
-      raf = requestAnimationFrame(frame);
+      schedule();
     }
-    /* 只在"从休眠中被唤醒"时重置时间基准 —— 每帧都重置会让 dt 退化成鼠标事件间隔 */
-    function start() { if (!raf && live) { last = performance.now(); raf = requestAnimationFrame(frame); } }
-    function stop() { if (raf) { cancelAnimationFrame(raf); raf = 0; } }
+    function schedule() {
+      if (!live) return;
+      if (isSlow()) { usingTimer = true; handle = setTimeout(frame, 40); }   // 待机降到 ~25fps
+      else { usingTimer = false; handle = requestAnimationFrame(frame); }
+    }
+    /* 只在"从停歇中被唤醒"时重置时间基准 —— 每帧都重置会让 dt 退化成鼠标事件间隔 */
+    function start() { if (!handle && live) { last = performance.now(); schedule(); } }
+    function stop() {
+      if (!handle) return;
+      if (usingTimer) clearTimeout(handle); else cancelAnimationFrame(handle);
+      handle = 0;
+    }
+
+    /* —— 接管系统箭头：只在 canvas 确实出过帧（beat > 0）之后才挂类 —— */
+    function arm() { if (beat > 0) html.classList.add("fx-cursor"); }
+    function disarm() { html.classList.remove("fx-cursor"); }
 
     window.addEventListener("pointermove", function (e) {
       if (e.pointerType && e.pointerType !== "mouse") return;
-      tx = e.clientX; ty = e.clientY; idle = 0;
-      var t = e.target;
-      hoverHot = !!(t && t.closest && t.closest("a,button,input,summary,.side a,.toc a"));
+      x = e.clientX; y = e.clientY; idle = 0;
+      var t = e.target, near = t && t.closest;
+      hovLink = !!(near && t.closest("a,button,input,summary,select,.side a,.toc a"));
+      hovText = !!(near && t.closest("input,textarea,[contenteditable='true']"));
+      arm();
       start();
     }, { passive: true });
-    /* 指针离开窗口：清掉目标位，回来时不会拉出一道跨屏长丝 */
+    /* 指针离开视口（比如移向浏览器工具栏）：清掉目标位并立刻把系统箭头还回去 */
     document.addEventListener("pointerleave", function () {
-      tx = ty = -1e4; idle = IDLE + 500;
+      x = y = px = py = -1e4; idle = IDLE + 500; down = false;
+      disarm();
     }, { passive: true });
+    window.addEventListener("pointerdown", function (e) {
+      if (e.pointerType && e.pointerType !== "mouse") return;
+      down = true;
+    }, { passive: true });
+    window.addEventListener("pointerup", function () { down = false; }, { passive: true });
+    window.addEventListener("pointercancel", function () { down = false; }, { passive: true });
+    window.addEventListener("blur", function () { down = false; });
+
+    /* 心跳兜底：该出帧却不出帧（脚本报错 / 渲染卡死）→ 立刻还原系统箭头，
+       绝不能让人在没有光标的情况下操作页面。待机降频属正常，不触发还原。 */
+    var prevBeat = -1;
+    setInterval(function () {
+      if (document.hidden) { prevBeat = -1; return; }
+      if (idle < IDLE) {
+        if (beat === prevBeat) disarm();
+        else if (x > -1e3) arm();
+      }
+      prevBeat = beat;
+    }, 900);
 
     var rt = 0;
     window.addEventListener("resize", function () {
@@ -746,7 +874,8 @@
     });
     document.addEventListener("visibilitychange", function () {
       live = !document.hidden;
-      if (live) { idle = IDLE + 500; last = performance.now(); } else stop();
+      if (live) { last = performance.now(); if (x > -1e3) start(); }
+      else stop();
     });
 
     readColor(); size();

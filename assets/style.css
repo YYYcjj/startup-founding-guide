@@ -190,7 +190,8 @@ body {
 }
 
 /* ============ 布局 ============ */
-.layout { display: flex; min-height: calc(100vh - var(--header-h)); }
+/* z-index:1 —— 把内容抬到粒子画布(.fx-stars, z-index:0)之上 */
+.layout { display: flex; min-height: calc(100vh - var(--header-h)); position: relative; z-index: 1; }
 aside.side {
   width: 288px; flex: none;
   border-right: 1px solid var(--border);
@@ -198,7 +199,7 @@ aside.side {
   overflow-y: auto;
   position: sticky; top: var(--header-h);
   height: calc(100vh - var(--header-h));
-  padding: 10px 8px 60px;
+  padding: 10px 8px 78px;          /* 底部留白避开左下角 HUD 遥测条 */
 }
 main.content {
   flex: 1; min-width: 0;
@@ -218,6 +219,7 @@ main.content {
 .side .group-name::before { content: "// "; color: var(--neon); opacity: .85; }
 .side a.item {
   display: block; padding: 6px 10px; margin: 1px 0;
+  position: relative;
   border-left: 2px solid transparent;
   color: var(--text-2); text-decoration: none; font-size: 13.5px; line-height: 1.45;
   transition: color .16s, background .16s, border-color .16s, box-shadow .16s;
@@ -631,6 +633,144 @@ body::after {
 /* —— 搜索卡片：打开时边框光晕呼吸 —— */
 .search-box.open .search-card { animation: fx-breathe 3.4s ease-in-out infinite; }
 
+/* ============================================================
+   FX-2 层 · 更强科幻
+   粒子星网 / HUD 遥测 / 指针准星 / 换页冲击波 / 标题解码 / 开机自检
+   ============================================================ */
+
+/* —— 粒子星网：canvas 铺在内容之下，颜色随板块走 —— */
+.fx-stars {
+  position: fixed; inset: 0; z-index: 0;
+  pointer-events: none; opacity: .9;
+  transition: opacity .4s;
+}
+[data-theme="light"] .fx-stars { opacity: .45; }
+
+/* —— HUD 遥测条：左下角常驻读数（板块 / 进度 / 时钟） —— */
+.fx-hud {
+  position: fixed; left: 14px; bottom: 14px; z-index: 45;
+  display: flex; align-items: center; gap: 6px;
+  padding: 5px 9px;
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--text-3);
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  border: 1px solid var(--border); border-radius: 2px;
+  backdrop-filter: blur(10px) saturate(160%);
+  pointer-events: none;
+}
+/* 四角括号只留左上/右下两个，仪表感更强又不啰嗦 */
+.fx-hud::before, .fx-hud::after {
+  content: ""; position: absolute; width: 5px; height: 5px;
+  border: 1px solid var(--neon); opacity: .85;
+}
+.fx-hud::before { left: -1px; top: -1px; border-right: 0; border-bottom: 0; }
+.fx-hud::after { right: -1px; bottom: -1px; border-left: 0; border-top: 0; }
+.fx-hud .hud-dot {
+  width: 5px; height: 5px; border-radius: 50%; flex: none;
+  background: var(--neon); box-shadow: 0 0 8px var(--glow);
+  animation: fx-pulse 1.6s ease-in-out infinite;
+}
+.fx-hud .hud-sec { color: var(--neon); text-shadow: 0 0 8px var(--glow); }
+.fx-hud .hud-sep { color: var(--border-2); }
+.fx-hud .hud-num { color: var(--text-2); font-variant-numeric: tabular-nums; }
+@media (max-width: 620px) {
+  .fx-hud { left: 10px; bottom: 10px; font-size: 9.5px; padding: 4px 7px; letter-spacing: .06em; }
+}
+
+/* —— 指针准星：跟随鼠标的十字发丝（触摸端停用） —— */
+.fx-cross { position: fixed; inset: 0; z-index: 8600; pointer-events: none; opacity: 0; transition: opacity .35s; }
+.fx-cross::before {
+  content: ""; position: absolute; left: 0; right: 0; top: var(--my); height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--neon) 60%, transparent), transparent);
+}
+.fx-cross::after {
+  content: ""; position: absolute; top: 0; bottom: 0; left: var(--mx); width: 1px;
+  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--neon) 60%, transparent), transparent);
+}
+@media (hover: hover) and (pointer: fine) { body:hover .fx-cross { opacity: .45; } }
+
+/* —— 换页冲击波：一条能量带自上而下扫过一次 —— */
+.fx-wipe {
+  position: fixed; left: 0; right: 0; top: -30vh; height: 30vh; z-index: 9500;
+  pointer-events: none; opacity: 0;
+  background: linear-gradient(to bottom,
+    transparent,
+    color-mix(in srgb, var(--neon) 7%, transparent) 42%,
+    color-mix(in srgb, var(--neon-3) 30%, transparent) 50%,
+    color-mix(in srgb, var(--neon) 7%, transparent) 58%,
+    transparent);
+}
+.fx-wipe.run { animation: fx-wipe-run .62s cubic-bezier(.4, 0, .2, 1); }
+@keyframes fx-wipe-run {
+  0%   { transform: translateY(0);     opacity: 0; }
+  12%  {                               opacity: 1; }
+  100% { transform: translateY(146vh); opacity: 0; }
+}
+
+/* —— 点击涟漪（仅鼠标，触屏已有原生反馈） —— */
+.fx-ripple {
+  position: fixed; z-index: 9400; pointer-events: none;
+  width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--neon) 70%, transparent);
+  box-shadow: 0 0 14px -3px var(--glow);
+  animation: fx-ripple .6s ease-out forwards;
+}
+@keyframes fx-ripple {
+  from { transform: scale(.4); opacity: .9; }
+  to   { transform: scale(6);  opacity: 0; }
+}
+
+/* —— 标题解码：JS 逐帧替换字形期间，标题泛板块色 —— */
+.doc h1.fx-decode { color: color-mix(in srgb, var(--neon) 60%, var(--text)); }
+
+/* —— 侧栏激活项：一道光柱自上而下流过 —— */
+.side a.item.active::after {
+  content: ""; position: absolute; left: -2px; top: 0; bottom: 0; width: 2px;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent, var(--neon) 50%, transparent);
+  background-size: 100% 200%; background-position: 0 0;
+  animation: fx-flowv 2.4s linear infinite;
+}
+
+/* —— 阅读进度条：光刃前端加一颗弹头光点 —— */
+.progress::after {
+  content: ""; position: absolute; right: -2px; top: -2px;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--neon-3);
+  box-shadow: 0 0 10px var(--neon), 0 0 22px var(--glow);
+}
+
+/* —— 开机自检：每次会话首次进入时的一瞬启动画面（点按可跳过） —— */
+.fx-boot {
+  position: fixed; inset: 0; z-index: 9800;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg); font-family: var(--mono);
+  /* 兜底：即便 JS 失效，1.75s 后也自动淡出，不会卡住页面 */
+  animation: fx-boot-out .5s ease 1.75s forwards;
+}
+.fx-boot.skip { animation: fx-boot-out .26s ease forwards; }
+@keyframes fx-boot-out { to { opacity: 0; visibility: hidden; } }
+.fx-boot-inner { width: min(86vw, 360px); }
+.fx-boot-title {
+  font-size: 14px; letter-spacing: .3em; color: var(--neon);
+  text-shadow: 0 0 16px var(--glow); margin-bottom: 15px; text-transform: uppercase;
+}
+.fx-boot-title b { font-weight: 600; }
+.fx-boot-log { font-size: 11px; line-height: 1.95; color: var(--text-3); letter-spacing: .05em; min-height: 62px; }
+.fx-boot-log .ok { color: var(--neon); }
+.fx-boot-log .dim { color: var(--border-2); }
+.fx-boot-bar { height: 2px; margin-top: 13px; background: var(--border); overflow: hidden; }
+.fx-boot-bar i {
+  display: block; height: 100%; width: 0;
+  background: linear-gradient(90deg, var(--neon), var(--neon-2));
+  box-shadow: 0 0 10px var(--glow);
+  transition: width 1.15s cubic-bezier(.2, .7, .3, 1);
+}
+.fx-boot-hint { margin-top: 12px; font-size: 10px; letter-spacing: .14em; color: var(--border-2); text-transform: uppercase; }
+
+@keyframes fx-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .28; } }
+@keyframes fx-flowv { 0% { background-position: 0 0; } 100% { background-position: 0 100%; } }
+
 /* —— 无障碍：尊重系统"减少动态效果" —— */
 @media (prefers-reduced-motion: reduce) {
   body::after { display: none; }
@@ -640,7 +780,11 @@ body::after {
   .progress,
   .side a.item.active,
   .logo::after,
+  .fx-hud .hud-dot,
+  .side a.item.active::after,
   .search-box.open .search-card { animation: none !important; }
   .doc > .reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
   .pager a::after { display: none; }
+  .fx-cross, .fx-ripple, .fx-wipe { display: none !important; }
+  .fx-boot { display: none !important; }
 }

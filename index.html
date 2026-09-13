@@ -14,6 +14,27 @@
 <body>
 <div class="progress" id="progress"></div>
 
+<!-- FX-2：粒子星网 / 指针准星 / 换页冲击波 / HUD 遥测 / 开机自检 -->
+<canvas class="fx-stars" id="fxStars" aria-hidden="true"></canvas>
+<div class="fx-cross" id="fxCross" aria-hidden="true"></div>
+<div class="fx-wipe" id="fxWipe" aria-hidden="true"></div>
+<div class="fx-hud" id="fxHud" aria-hidden="true">
+  <span class="hud-dot"></span>
+  <span class="hud-sec" id="hudSec">INDEX</span>
+  <span class="hud-sep">/</span>
+  <span class="hud-num" id="hudPct">000%</span>
+  <span class="hud-sep">/</span>
+  <span class="hud-num" id="hudTime">--:--:--</span>
+</div>
+<div class="fx-boot" id="fxBoot" aria-hidden="true">
+  <div class="fx-boot-inner">
+    <div class="fx-boot-title"><b>创</b> · FOUNDER OS</div>
+    <div class="fx-boot-log" id="fxBootLog"></div>
+    <div class="fx-boot-bar"><i id="fxBootBar"></i></div>
+    <div class="fx-boot-hint">点击任意位置跳过</div>
+  </div>
+</div>
+
 <header class="topbar">
   <button class="icon-btn menu" id="btnMenu" aria-label="菜单">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
@@ -100,6 +121,7 @@
     var s = secOf(f);
     if (s) document.documentElement.setAttribute("data-sec", s);
     else document.documentElement.removeAttribute("data-sec");
+    hudSecUpdate();                    // 左下角遥测条同步显示当前板块
   }
   /* 给指向各板块的站内链接打色标 —— 一眼看出这条链接跳到哪个板块 */
   function tagLinks() {
@@ -223,6 +245,9 @@
       markSearch();
       window.scrollTo(0, 0);
       armReveal();
+      wipe();               // 换页冲击波（首次进入不播）
+      decodeH1();           // 标题字形逐帧落定
+      onScroll();           // 立刻同步 HUD 读数的百分比
       // 记住位置（含锚点）
       var key = "sg-last"; try { localStorage.setItem(key, f); } catch (e) {}
       var anchor = location.hash.replace(/^#\/.*?(?=#|$)/, "");
@@ -336,8 +361,17 @@
   /* ---------- 全文搜索 ---------- */
   var allDocsReady = false;
   function preloadAll() {
-    var ps = FLAT.map(function (it) { return ensure(it.f).catch(function () {}); });
-    return Promise.all(ps).then(function () { allDocsReady = true; });
+    /* 分批预热：一次性开 30 条连接会把浏览器的并发额度占满，
+       用户此时点侧栏就得排队等（弱网下能等出好几秒）。改成每批 4 篇、
+       批间让出一帧，用户的手动导航永远优先。 */
+    var i = 0;
+    function batch() {
+      if (i >= FLAT.length) { allDocsReady = true; return; }
+      var ps = FLAT.slice(i, i + 4).map(function (it) { return ensure(it.f).catch(function () {}); });
+      i += 4;
+      Promise.all(ps).then(function () { setTimeout(batch, 30); });
+    }
+    return batch();
   }
   function ctxSnippet(text, q, max) {
     var idx = text.indexOf(q);
@@ -464,6 +498,189 @@
     }
   }
 
+  /* ============================================================
+     FX-2：粒子星网 / 换页冲击波 / 标题解码 / HUD 遥测 / 点击涟漪 / 开机自检
+     全部在 prefers-reduced-motion 下自动关闭
+     ============================================================ */
+
+  /* ---------- 粒子星网：canvas 铺在内容之下，颜色跟板块走 ---------- */
+  (function stars() {
+    var cv = $("fxStars");
+    if (!cv) return;
+    if (reduceMotion) { cv.remove(); return; }
+    var ctx = cv.getContext && cv.getContext("2d");
+    if (!ctx) { cv.remove(); return; }
+
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var W = 0, H = 0, pts = [], col = [34, 211, 238], raf = 0, tick = 0, live = true;
+
+    /* 从 CSS 变量读主色，hex → rgb；每 45 帧刷一次，板块换色后自动跟上 */
+    function readColor() {
+      var v = getComputedStyle(document.documentElement).getPropertyValue("--neon").trim();
+      var m = v.match(/^#([0-9a-f]{6})$/i);
+      if (m) { var n = parseInt(m[1], 16); col = [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+    }
+    function size() {
+      W = cv.width = Math.round(innerWidth * dpr);
+      H = cv.height = Math.round(innerHeight * dpr);
+      cv.style.width = innerWidth + "px";
+      cv.style.height = innerHeight + "px";
+      var n = Math.max(16, Math.min(110, Math.round((innerWidth * innerHeight) / 17000)));
+      pts = [];
+      for (var i = 0; i < n; i++) pts.push({
+        x: Math.random() * W, y: Math.random() * H,
+        vx: (Math.random() - .5) * .22 * dpr,
+        vy: (Math.random() - .5) * .22 * dpr,
+        s: (Math.random() * 1.1 + .6) * dpr
+      });
+    }
+    function frame() {
+      raf = 0;
+      if (!live) return;
+      if (++tick % 45 === 0) readColor();
+      ctx.clearRect(0, 0, W, H);
+      var link = 118 * dpr, c = col[0] + "," + col[1] + "," + col[2];
+      for (var i = 0; i < pts.length; i++) {
+        var p = pts[i];
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < -20) p.x = W + 20; else if (p.x > W + 20) p.x = -20;
+        if (p.y < -20) p.y = H + 20; else if (p.y > H + 20) p.y = -20;
+        ctx.fillStyle = "rgba(" + c + ",.62)";
+        ctx.fillRect(p.x, p.y, p.s, p.s);
+        for (var j = i + 1; j < pts.length; j++) {
+          var q = pts[j], dx = p.x - q.x, dy = p.y - q.y, d2 = dx * dx + dy * dy;
+          if (d2 > link * link) continue;
+          ctx.strokeStyle = "rgba(" + c + "," + ((1 - Math.sqrt(d2) / link) * .42).toFixed(3) + ")";
+          ctx.lineWidth = dpr * .6;
+          ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(q.x, q.y); ctx.stroke();
+        }
+      }
+      raf = requestAnimationFrame(frame);
+    }
+    function start() { if (!raf && live) raf = requestAnimationFrame(frame); }
+    function stop() { if (raf) { cancelAnimationFrame(raf); raf = 0; } }
+
+    readColor(); size(); start();
+    var rt = 0;
+    window.addEventListener("resize", function () {
+      clearTimeout(rt);
+      rt = setTimeout(size, 180);
+    });
+    document.addEventListener("visibilitychange", function () {
+      live = !document.hidden;               // 切到后台立即停，不白烧电
+      if (live) start(); else stop();
+    });
+  })();
+
+  /* ---------- 换页冲击波：首次进入不播，之后每次切文档扫一道 ---------- */
+  var fxFirst = true;
+  function wipe() {
+    if (reduceMotion || fxFirst) { fxFirst = false; return; }
+    var w = $("fxWipe");
+    if (!w) return;
+    w.classList.remove("run");
+    void w.offsetWidth;                      // 强制重排，动画才能重启动
+    w.classList.add("run");
+  }
+
+  /* ---------- 标题解码：字形逐帧"落定"（仅纯文本 h1，避免破坏内联标记） ---------- */
+  function decodeH1() {
+    if (reduceMotion) return;
+    var el = docEl.querySelector("h1");
+    if (!el || el.children.length) return;
+    var finalText = el.textContent || "";
+    if (!finalText || finalText.length > 40) return;
+    var glyphs = "ABCDEFGHJKLMNPQRSTUVWXYZ0123456789/\\<>#*+=";
+    var len = finalText.length, total = 13, frame = 0;
+    el.classList.add("fx-decode");
+    var iv = setInterval(function () {
+      frame++;
+      var p = frame / total, out = "";
+      for (var i = 0; i < len; i++) {
+        var ch = finalText.charAt(i);
+        if (i < p * len) out += ch;
+        else if (ch === " ") out += " ";
+        else if (ch.charCodeAt(0) > 0x2e80) out += "·";                       // 汉字：占位符保持等宽
+        else out += glyphs.charAt((Math.random() * glyphs.length) | 0);
+      }
+      el.textContent = out;
+      if (frame >= total) {
+        clearInterval(iv);
+        el.textContent = finalText;
+        el.classList.remove("fx-decode");
+      }
+    }, 32);
+  }
+
+  /* ---------- HUD 遥测：板块 / 阅读进度 / 时钟 ---------- */
+  var hudSec = $("hudSec"), hudPct = $("hudPct"), hudTime = $("hudTime");
+  function hudSecUpdate() {
+    var s = document.documentElement.getAttribute("data-sec");
+    if (hudSec) hudSec.textContent = s || "INDEX";
+  }
+  (function hudClock() {
+    if (!hudTime) return;
+    function tick() {
+      var d = new Date(), p = function (n) { return (n < 10 ? "0" : "") + n; };
+      hudTime.textContent = p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+    }
+    tick();
+    setInterval(tick, 1000);
+  })();
+
+  /* ---------- 点击涟漪（仅鼠标；触屏已有原生按下反馈） ---------- */
+  document.addEventListener("pointerdown", function (e) {
+    if (reduceMotion || e.pointerType !== "mouse") return;
+    var d = document.createElement("div");
+    d.className = "fx-ripple";
+    d.style.left = e.clientX + "px";
+    d.style.top = e.clientY + "px";
+    document.body.appendChild(d);
+    setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, 640);
+  }, { passive: true });
+
+  /* ---------- 开机自检：每会话仅首屏一次，点按/按键可跳过 ---------- */
+  (function boot() {
+    var b = $("fxBoot");
+    if (!b) return;
+    if (reduceMotion) { b.remove(); return; }
+    var seen = 0;
+    try { seen = sessionStorage.getItem("sg-boot") ? 1 : 0; } catch (e) {}
+    if (seen) { b.remove(); return; }         // 会话内已看过 → 不再打扰
+    try { sessionStorage.setItem("sg-boot", "1"); } catch (e) {}
+
+    b.style.cursor = "pointer";
+    var log = $("fxBootLog"), bar = $("fxBootBar");
+    var lines = [
+      "&gt; 挂载 FOUNDER-OS <span class='ok'>v1.0</span>",
+      "&gt; 载入知识库&nbsp;<span class='dim'>············</span> <span class='ok'>OK</span>",
+      "&gt; 校验文档索引&nbsp;<span class='dim'>········</span> <span class='ok'>OK</span>",
+      "&gt; 全站检索就绪&nbsp;<span class='dim'>········</span> <span class='ok'>OK</span>",
+      "&gt; 系统就绪，欢迎回来 <span class='ok'>_</span>"
+    ];
+    var i = 0;
+    var iv = setInterval(function () {
+      if (i >= lines.length) { clearInterval(iv); return; }
+      if (log) log.insertAdjacentHTML("beforeend", lines[i] + "<br>");
+      i++;
+    }, 150);
+    if (bar) { bar.style.width = "0"; setTimeout(function () { bar.style.width = "100%"; }, 60); }
+
+    var gone = false;
+    function kill(fast) {
+      if (gone) return;
+      gone = true;
+      clearInterval(iv);
+      if (fast) b.classList.add("skip");
+      setTimeout(function () { if (b.parentNode) b.remove(); }, fast ? 300 : 600);
+    }
+    setTimeout(function () {
+      b.addEventListener("click", function () { kill(true); });
+      document.addEventListener("keydown", function () { kill(true); }, { once: true });
+    }, 320);
+    setTimeout(function () { kill(false); }, 2400);   // CSS 1.75s 淡出后收尾
+  })();
+
   /* ---------- 滚动进度 & 回顶 ---------- */
   function onScroll() {
     var h = document.documentElement;
@@ -471,6 +688,7 @@
     var p = max > 0 ? (h.scrollTop / max) * 100 : 0;
     $("progress").style.width = p + "%";
     $("toTop").classList.toggle("show", h.scrollTop > 600);
+    if (hudPct) hudPct.textContent = ("00" + Math.round(p)).slice(-3) + "%";
   }
   window.addEventListener("scroll", onScroll, { passive: true });
   onScroll();

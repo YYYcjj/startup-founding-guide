@@ -22,7 +22,7 @@
   <span class="hud-dot"></span>
   <span class="hud-sec" id="hudSec">INDEX</span>
   <span class="hud-sep">/</span>
-  <span class="hud-num" id="hudPct">000%</span>
+  <span class="hud-num" id="hudPct">0%</span>
   <span class="hud-sep">/</span>
   <span class="hud-num" id="hudTime">--:--:--</span>
 </div>
@@ -998,7 +998,7 @@
     var p = max > 0 ? (h.scrollTop / max) * 100 : 0;
     $("progress").style.width = p + "%";
     $("toTop").classList.toggle("show", h.scrollTop > 600);
-    if (hudPct) hudPct.textContent = ("00" + Math.round(p)).slice(-3) + "%";
+    if (hudPct) hudPct.textContent = Math.round(p) + "%";
   }
   window.addEventListener("scroll", onScroll, { passive: true });
   onScroll();

@@ -24,7 +24,8 @@
   --glow: color-mix(in srgb, var(--neon) 40%, transparent);
   --glow-2: color-mix(in srgb, var(--neon-2) 36%, transparent);
 
-  --grid: rgba(130, 200, 255, .06);
+  --grid: rgba(130, 200, 255, .045);      /* 细网格 34px */
+  --grid-2: rgba(130, 200, 255, .075);    /* 粗基准线 170px：图纸感 */
   --shine: linear-gradient(90deg, var(--neon), var(--neon-2));
   /* 指针环境光坐标（JS 实时更新；无指针设备停在顶部中央） */
   --mx: 50%;
@@ -81,14 +82,17 @@ html, body { margin: 0; padding: 0; }
 body {
   color: var(--text);
   background-color: var(--bg);
-  /* 跟随指针的环境光 + 两处霓虹光晕 + 网格地平线（随板块换色） */
+  /* 跟随指针的环境光 + 两处静态霓虹光晕（压淡，让位给可动的星云层）
+     + 双层网格：170px 图纸基准线 / 34px 细格 */
   background-image:
-    radial-gradient(460px 460px at var(--mx) var(--my), color-mix(in srgb, var(--neon) 16%, transparent), transparent 62%),
-    radial-gradient(760px 400px at 12% -8%, color-mix(in srgb, var(--neon) 15%, transparent), transparent 64%),
-    radial-gradient(720px 380px at 88% -6%, color-mix(in srgb, var(--neon-2) 15%, transparent), transparent 64%),
+    radial-gradient(460px 460px at var(--mx) var(--my), color-mix(in srgb, var(--neon) 13%, transparent), transparent 62%),
+    radial-gradient(760px 400px at 12% -8%, color-mix(in srgb, var(--neon) 9%, transparent), transparent 64%),
+    radial-gradient(720px 380px at 88% -6%, color-mix(in srgb, var(--neon-2) 9%, transparent), transparent 64%),
+    linear-gradient(var(--grid-2) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-2) 1px, transparent 1px),
     linear-gradient(var(--grid) 1px, transparent 1px),
     linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-  background-size: 100% 100%, 100% 100%, 100% 100%, 34px 34px, 34px 34px;
+  background-size: 100% 100%, 100% 100%, 100% 100%, 170px 170px, 170px 170px, 34px 34px, 34px 34px;
   background-attachment: fixed;
   font: 15px/1.8 -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Microsoft YaHei", sans-serif;
   /* 深底上不用 antialiased —— 它会把浅色字形削细、发虚，反而更难读 */
@@ -677,13 +681,13 @@ body::after {
   .fx-hud { left: 10px; bottom: 10px; font-size: 9.5px; padding: 4px 7px; letter-spacing: .06em; }
 }
 
-/* —— 光标光尾：粒子彗尾 + 能量核 + 点击火花（canvas 绘制，触摸端不加载） —— */
+/* —— 星舰光标：舰体 + 引擎焰 + 航迹 + 点击火花（canvas 绘制，触摸端不加载） —— */
 /* 它现在就是光标本体，必须压过顶栏(50)/搜索框(80)/进度条(100)，
    但仍让位于扫描线(9000)、换页冲击波(9500)与开机自检(9800)。 */
 .fx-trail { position: fixed; inset: 0; z-index: 8700; pointer-events: none; }
 [data-theme="light"] .fx-trail { opacity: .8; }
 
-/* —— 原生指针接管：能量核就是光标，系统箭头让位 ——
+/* —— 原生指针接管：星舰就是光标，系统箭头让位 ——
      这个类**只由 JS 在确认 canvas 已真实出帧之后**才挂上（带心跳降级），
      所以脚本挂掉、渲染卡死、或用户离开视口时，系统箭头都会自动回来。 */
 html.fx-cursor, html.fx-cursor * { cursor: none !important; }
@@ -773,6 +777,227 @@ html.fx-cursor [contenteditable="true"], html.fx-cursor [contenteditable=""] { c
 @keyframes fx-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .28; } }
 @keyframes fx-flowv { 0% { background-position: 0 0; } 100% { background-position: 0 100%; } }
 
+/* ============================================================
+   BG-3 层 · 深空 / 极光 / 地形
+   三种气质各管一摊，叠成一个有纵深的背景：
+     · 太空感 → 视差星野 + 星云 + 流星（canvas，见 index.html）
+     · 自然感 → 极光带 + 等高线 + 上飘浮尘
+     · 科技感 → 透视地平网格 + 视口边框 + 颗粒噪点
+   全部 fixed 且 z-index:0，内容 .layout(z-index:1) 稳定在其上。
+   ============================================================ */
+
+.fx-bg {
+  position: fixed; inset: 0; z-index: 0;
+  pointer-events: none; overflow: hidden;
+  /* 隔离绘制：背景再怎么动也不会触发正文重排重绘 */
+  contain: layout paint style;
+}
+
+/* —— 星云：三团超大柔光，几十秒一轮缓慢漂移 ——
+     screen 混合让暗底上的色团像"自身发光的气体"而不是贴纸 */
+.fx-nebula { position: absolute; inset: -12%; }
+.fx-nebula i {
+  position: absolute; display: block; border-radius: 50%;
+  mix-blend-mode: screen; will-change: transform;
+}
+.fx-nebula i:nth-child(1) {
+  width: 62vw; height: 62vw; left: -10%; top: -16%;
+  background: radial-gradient(circle at 50% 50%,
+    color-mix(in srgb, var(--neon) 30%, transparent), transparent 66%);
+  opacity: .30; animation: fx-neb-a 58s ease-in-out infinite;
+}
+.fx-nebula i:nth-child(2) {
+  width: 54vw; height: 54vw; right: -8%; top: -6%;
+  background: radial-gradient(circle at 50% 50%,
+    color-mix(in srgb, var(--neon-2) 32%, transparent), transparent 68%);
+  opacity: .28; animation: fx-neb-b 74s ease-in-out infinite;
+}
+.fx-nebula i:nth-child(3) {
+  width: 68vw; height: 54vw; left: 12%; bottom: -8%;
+  background: radial-gradient(circle at 50% 50%,
+    color-mix(in srgb, var(--neon) 24%, transparent), transparent 70%);
+  opacity: .24; animation: fx-neb-c 92s ease-in-out infinite;
+}
+@keyframes fx-neb-a {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  33%      { transform: translate3d(6vw, 3.5vh, 0) scale(1.14); }
+  66%      { transform: translate3d(-3vw, 7vh, 0) scale(.94); }
+}
+@keyframes fx-neb-b {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1.05); }
+  40%      { transform: translate3d(-5vw, 5vh, 0) scale(.92); }
+  75%      { transform: translate3d(3vw, 2vh, 0) scale(1.16); }
+}
+@keyframes fx-neb-c {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: .18; }
+  50%      { transform: translate3d(4vw, -3vh, 0) scale(1.12); opacity: .27; }
+}
+
+/* —— 极光：五道被模糊拉开的"竖帘"，高低错落、各自摆动 ——
+     做法上是窄长椭圆 → 边缘天然柔和，不会糊成一条方块。
+     帘幕整体斜置 -7°，合起来就是一片纵向流动的极光。 */
+.fx-aurora { position: absolute; left: -14%; right: -14%; top: -22%; height: 96vh; transform: rotate(-7deg); }
+.fx-aurora i {
+  position: absolute; display: block; border-radius: 50%;
+  filter: blur(26px); mix-blend-mode: screen;
+  will-change: transform, opacity;
+}
+.fx-aurora i:nth-child(1) {
+  left: 5%; width: 13%; top: 4%; height: 74%;
+  background: linear-gradient(180deg, transparent,
+    color-mix(in srgb, var(--neon) 60%, transparent) 22%,
+    color-mix(in srgb, var(--neon) 24%, transparent) 58%, transparent);
+  opacity: .46; animation: fx-aur-a 18s ease-in-out infinite;
+}
+.fx-aurora i:nth-child(2) {
+  left: 21%; width: 9%; top: 13%; height: 62%;
+  background: linear-gradient(180deg, transparent,
+    color-mix(in srgb, var(--neon-2) 64%, transparent) 26%,
+    color-mix(in srgb, var(--neon-2) 20%, transparent) 62%, transparent);
+  opacity: .40; animation: fx-aur-b 25s ease-in-out infinite;
+}
+.fx-aurora i:nth-child(3) {
+  left: 35%; width: 13%; top: 0; height: 82%;
+  background: linear-gradient(180deg, transparent,
+    color-mix(in srgb, var(--neon) 40%, transparent) 30%, transparent 84%);
+  opacity: .24; animation: fx-aur-a 32s ease-in-out infinite reverse;
+}
+.fx-aurora i:nth-child(4) {
+  left: 57%; width: 11%; top: 8%; height: 68%;
+  background: linear-gradient(180deg, transparent,
+    color-mix(in srgb, var(--neon-2) 50%, transparent) 24%, transparent 80%);
+  opacity: .36; animation: fx-aur-b 21s ease-in-out infinite;
+}
+.fx-aurora i:nth-child(5) {
+  left: 76%; width: 15%; top: 2%; height: 76%;
+  background: linear-gradient(180deg, transparent,
+    color-mix(in srgb, var(--neon) 54%, transparent) 28%, transparent 86%);
+  opacity: .28; animation: fx-aur-a 38s ease-in-out infinite;
+}
+@keyframes fx-aur-a {
+  0%, 100% { transform: translate3d(0, 0, 0) scaleY(1) skewX(-4deg); opacity: .40; }
+  50%      { transform: translate3d(1.6%, 3%, 0) scaleY(1.24) skewX(6deg); opacity: .74; }
+}
+@keyframes fx-aur-b {
+  0%, 100% { transform: translate3d(0, 0, 0) scaleY(1.14) skewX(7deg); opacity: .56; }
+  50%      { transform: translate3d(-2.2%, 5%, 0) scaleY(.88) skewX(-6deg); opacity: .26; }
+}
+
+/* —— 等高线地形：三层不同椭圆心的同心环，往上渐隐 ——
+     比直线网格"有机"，是自然感里最不喧哗的一笔 */
+.fx-terrain {
+  position: absolute; left: -12%; right: -12%; bottom: -6%; height: 78vh;
+  background-image:
+    repeating-radial-gradient(112% 74% at 16% 128%, transparent 0 25px,
+      color-mix(in srgb, var(--neon) 20%, transparent) 25px 26px),
+    repeating-radial-gradient(104% 68% at 86% 134%, transparent 0 33px,
+      color-mix(in srgb, var(--neon-2) 18%, transparent) 33px 34px),
+    repeating-radial-gradient(136% 88% at 50% 146%, transparent 0 45px,
+      color-mix(in srgb, var(--neon) 12%, transparent) 45px 46px);
+  -webkit-mask-image: linear-gradient(to top, #000 0%, rgba(0, 0, 0, .5) 34%, transparent 78%);
+  mask-image: linear-gradient(to top, #000 0%, rgba(0, 0, 0, .5) 34%, transparent 78%);
+  opacity: .46;
+  animation: fx-ter-breathe 26s ease-in-out infinite;
+}
+@keyframes fx-ter-breathe {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: .40; }
+  50%      { transform: translate3d(0, -1.6%, 0) scale(1.035); opacity: .56; }
+}
+
+/* —— 透视地平：底部一块向后倒伏的网格平面，持续朝观察者滚动 ——
+     只占底部 20vh，"远山"式的一条微光而非硬边，避免把版面横切成两半 */
+.fx-horizon {
+  position: absolute; left: -30%; right: -30%; bottom: 0; height: 18vh;
+  overflow: hidden;
+  transform: translateZ(0);
+}
+.fx-horizon .plane {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 240%;
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--neon) 30%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--neon) 22%, transparent) 1px, transparent 1px);
+  background-size: 50px 50px;
+  opacity: .34;
+  transform-origin: 50% 100%;
+  animation: fx-hrun 3.4s linear infinite;
+  will-change: transform;
+}
+@keyframes fx-hrun {
+  from { transform: perspective(320px) rotateX(75deg) translateY(0); }
+  to   { transform: perspective(320px) rotateX(75deg) translateY(50px); }
+}
+/* 雾化：远端溶进背景、近处略压暗，中段最亮 —— 才像"被地平光打亮的地面" */
+.fx-horizon .haze {
+  position: absolute; inset: 0; display: block;
+  background: linear-gradient(to top,
+    color-mix(in srgb, var(--bg) 52%, transparent) 0%,
+    transparent 30%,
+    color-mix(in srgb, var(--bg) 62%, transparent) 66%,
+    color-mix(in srgb, var(--bg) 99%, transparent) 100%);
+}
+/* 地平光：一团贴地浮起的微光，不是一条硬线 */
+.fx-horizon::after {
+  content: ""; position: absolute; left: 0; right: 0; top: -34px; height: 68px;
+  background: radial-gradient(58% 100% at 50% 52%,
+    color-mix(in srgb, var(--neon) 26%, transparent), transparent 76%);
+  filter: blur(16px);
+  opacity: .3;
+}
+
+/* —— 颗粒噪点：一层极淡的胶片颗粒 ——
+     既是质感，也顺手抹平大面积渐变在深色下的色带断层。
+     注意 opacity 必须压得很低：overlay 混合会整体抬高底色亮度，
+     之前给到 .34 时整个背景被抬了约 +14 级灰，面板对比全被吃掉。
+     放在 .fx-bg 内 → 只作用于背景，不糊正文。 */
+.fx-grain {
+  position: absolute; inset: 0;
+  opacity: .08; mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.45'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
+}
+
+/* —— 视口边框：四角 L 形括号 + 内侧发丝，把整个页面框成一块仪表屏 —— */
+.fx-frame { position: fixed; inset: 9px; z-index: 8900; pointer-events: none; }
+.fx-frame i {
+  position: absolute; width: 20px; height: 20px; display: block;
+  border: 1px solid color-mix(in srgb, var(--neon) 60%, transparent);
+  opacity: .7;
+}
+.fx-frame i:nth-child(1) { left: 0;    top: 0;    border-right: 0; border-bottom: 0; }
+.fx-frame i:nth-child(2) { right: 0;   top: 0;    border-left: 0;  border-bottom: 0; }
+.fx-frame i:nth-child(3) { left: 0;    bottom: 0; border-right: 0; border-top: 0; }
+.fx-frame i:nth-child(4) { right: 0;   bottom: 0; border-left: 0;  border-top: 0; }
+.fx-frame::before,
+.fx-frame::after {
+  content: ""; position: absolute; left: 50%; width: 1px; height: 5px;
+  background: color-mix(in srgb, var(--neon) 45%, transparent); opacity: .6;
+}
+.fx-frame::before { top: -9px; }
+.fx-frame::after  { bottom: -9px; }
+
+/* —— 浅色主题：screen 混合在白底上会消失，改用 multiply 做淡彩 ——
+     分寸要更小：白底上一点色就"脏"，加上侧栏本身是半透明的，
+     极光一浓整块面板就发灰蓝。 */
+[data-theme="light"] .fx-nebula i,
+[data-theme="light"] .fx-aurora i { mix-blend-mode: multiply; }
+[data-theme="light"] .fx-nebula i { opacity: .09; }
+[data-theme="light"] .fx-aurora i { opacity: .17; }
+[data-theme="light"] .fx-aurora i { filter: blur(34px); }
+[data-theme="light"] .fx-terrain { opacity: .3; }
+[data-theme="light"] .fx-horizon .plane { opacity: .4; }
+[data-theme="light"] .fx-grain { opacity: .18; mix-blend-mode: multiply; }
+[data-theme="light"] .fx-frame i { opacity: .5; }
+
+/* —— 小屏：模糊层最贵，减一条极光、缩小地形与地平 —— */
+@media (max-width: 820px) {
+  .fx-frame { display: none; }
+  .fx-aurora i:nth-child(4),
+  .fx-aurora i:nth-child(5) { display: none; }
+  .fx-aurora i { filter: blur(20px); }
+  .fx-terrain { height: 48vh; opacity: .34; }
+  .fx-horizon { height: 16vh; }
+}
+
 /* —— 无障碍：尊重系统"减少动态效果" —— */
 @media (prefers-reduced-motion: reduce) {
   body::after { display: none; }
@@ -789,4 +1014,11 @@ html.fx-cursor [contenteditable="true"], html.fx-cursor [contenteditable=""] { c
   .pager a::after { display: none; }
   .fx-trail, .fx-ripple, .fx-wipe { display: none !important; }
   .fx-boot { display: none !important; }
+  /* 背景层保留静止的星云/地形（构图还在），只是不再运动 */
+  .fx-nebula i,
+  .fx-aurora i,
+  .fx-terrain,
+  .fx-horizon .plane { animation: none !important; }
+  .fx-horizon .plane { transform: perspective(320px) rotateX(75deg); }
+  .fx-grain { display: none; }
 }

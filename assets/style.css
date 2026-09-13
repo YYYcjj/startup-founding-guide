@@ -635,7 +635,7 @@ body::after {
 
 /* ============================================================
    FX-2 层 · 更强科幻
-   粒子星网 / HUD 遥测 / 指针准星 / 换页冲击波 / 标题解码 / 开机自检
+   粒子星网 / HUD 遥测 / 光标光尾 / 换页冲击波 / 标题解码 / 开机自检
    ============================================================ */
 
 /* —— 粒子星网：canvas 铺在内容之下，颜色随板块走 —— */
@@ -677,17 +677,9 @@ body::after {
   .fx-hud { left: 10px; bottom: 10px; font-size: 9.5px; padding: 4px 7px; letter-spacing: .06em; }
 }
 
-/* —— 指针准星：跟随鼠标的十字发丝（触摸端停用） —— */
-.fx-cross { position: fixed; inset: 0; z-index: 8600; pointer-events: none; opacity: 0; transition: opacity .35s; }
-.fx-cross::before {
-  content: ""; position: absolute; left: 0; right: 0; top: var(--my); height: 1px;
-  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--neon) 60%, transparent), transparent);
-}
-.fx-cross::after {
-  content: ""; position: absolute; top: 0; bottom: 0; left: var(--mx); width: 1px;
-  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--neon) 60%, transparent), transparent);
-}
-@media (hover: hover) and (pointer: fine) { body:hover .fx-cross { opacity: .45; } }
+/* —— 光标光尾：粒子彗尾 + 能量核 + 点击火花（canvas 绘制，触摸端不加载） —— */
+.fx-trail { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
+[data-theme="light"] .fx-trail { opacity: .8; }
 
 /* —— 换页冲击波：一条能量带自上而下扫过一次 —— */
 .fx-wipe {
@@ -785,6 +777,6 @@ body::after {
   .search-box.open .search-card { animation: none !important; }
   .doc > .reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
   .pager a::after { display: none; }
-  .fx-cross, .fx-ripple, .fx-wipe { display: none !important; }
+  .fx-trail, .fx-ripple, .fx-wipe { display: none !important; }
   .fx-boot { display: none !important; }
 }

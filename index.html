@@ -14,9 +14,9 @@
 <body>
 <div class="progress" id="progress"></div>
 
-<!-- FX-2：粒子星网 / 指针准星 / 换页冲击波 / HUD 遥测 / 开机自检 -->
+<!-- FX-2：粒子星网 / 光标光尾 / 换页冲击波 / HUD 遥测 / 开机自检 -->
 <canvas class="fx-stars" id="fxStars" aria-hidden="true"></canvas>
-<div class="fx-cross" id="fxCross" aria-hidden="true"></div>
+<canvas class="fx-trail" id="fxTrail" aria-hidden="true"></canvas>
 <div class="fx-wipe" id="fxWipe" aria-hidden="true"></div>
 <div class="fx-hud" id="fxHud" aria-hidden="true">
   <span class="hud-dot"></span>
@@ -572,6 +572,186 @@
     });
   })();
 
+  /* ---------- FX：光标光尾（取代旧十字准星；仅精细指针设备） ----------
+     头部带惯性追随指针 —— 彗尾 + 旋转能量核；停下约 1.7s 后自然敛去并休眠。
+     点击时炸开一圈火星，与 CSS 涟漪叠加。 */
+  var fxSparks = null;                       // 暴露给点击处理器
+  (function trail() {
+    var cv = $("fxTrail");
+    if (!cv) return;
+    if (reduceMotion || !window.matchMedia ||
+        !matchMedia("(hover: hover) and (pointer: fine)").matches) { cv.remove(); return; }
+    var ctx = cv.getContext && cv.getContext("2d");
+    if (!ctx) { cv.remove(); return; }
+
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var W = 0, H = 0, raf = 0, live = true, tf = 0, idle = 1e9;
+    var col = [34, 211, 238], colT = 0;
+    var tx = -1e4, ty = -1e4, hx = -1e4, hy = -1e4, hA = 0, hot = 0, hoverHot = false;
+    var rib = [], lx = -1e4, ly = -1e4, parts = [], last = 0;
+    var MAXP = 170, RIB = 22, IDLE = 1700, STEP = 6;   // 尾长(点) / 静止多久后敛去(ms) / 采样步长(px)
+
+    function rgb(a) { return "rgba(" + col[0] + "," + col[1] + "," + col[2] + "," + a + ")"; }
+
+    function readColor() {
+      var v = getComputedStyle(document.documentElement).getPropertyValue("--neon").trim();
+      var m = v.match(/^#([0-9a-f]{6})$/i);
+      if (m) { var n = parseInt(m[1], 16); col = [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+    }
+    function size() {
+      W = innerWidth; H = innerHeight;
+      cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+      cv.style.width = W + "px"; cv.style.height = H + "px";
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);   // 尺寸变化会重置变换，必须重设
+      rib.length = 0; lx = ly = -1e4;
+    }
+    function spawn(x, y, vx, vy, t, s, w) {
+      if (parts.length >= MAXP) parts.shift();
+      parts.push({ x: x, y: y, vx: vx, vy: vy, t: t, m: t, s: s, w: w ? 1 : 0 });
+    }
+    /* 火花爆：点击处向四周炸开（深色底用叠加发光，浅色底改用正常混合才看得见） */
+    fxSparks = function (cx, cy, n) {
+      for (var i = 0; i < (n || 18); i++) {
+        var a = Math.random() * 6.2832, sp = Math.random() * 3.6 + 1.1;
+        spawn(cx, cy, Math.cos(a) * sp, Math.sin(a) * sp,
+              26 + Math.random() * 30, Math.random() * 1.6 + 1.1, Math.random() < .35);
+      }
+    };
+
+    function frame() {
+      raf = 0;
+      if (!live) return;
+      /* 时间归一：所有插值都换算成"相对 60Hz 的倍率"，在 120Hz ProMotion 屏上手感才一致 */
+      var now = performance.now();
+      var dt = Math.min(64, now - last);       // 切后台回来时不让时间一次性暴冲
+      var k = Math.max(.25, dt / 16.67);
+      last = now;
+      var kA = 1 - Math.pow(.9, k);            // 淡入淡出 / 呼吸
+      var kH = 1 - Math.pow(.7, k);            // 头部追随（60Hz 下为 0.3）
+      var kD = Math.pow(.93, k);               // 火星摩擦
+      tf += k;
+      if (now - colT > 480) { colT = now; readColor(); }
+      ctx.clearRect(0, 0, W, H);
+
+      idle += dt;
+      var i, p;
+      var dx = tx - hx, dy = ty - hy;
+
+      /* 头部惯性追随指针：只走一部分，落差即尾部张力；跨屏瞬移不拉丝 */
+      if (tx > -1e3) {
+        if (hx < -1e3 || (dx * dx + dy * dy) > 250 * 250) { hx = tx; hy = ty; rib.length = 0; lx = ly = -1e4; }
+        hx += dx * kH; hy += dy * kH;
+      }
+      var sp = hx < -1e3 ? 0 : Math.sqrt(dx * dx + dy * dy);
+      var on = hx > -1e3 && idle < IDLE;
+      hA += ((on ? 1 : 0) - hA) * kA;
+
+      /* 轨迹采样：按"走过的距离"落点（不是按帧），尾巴长度就不会随刷新率变长变短 */
+      if (hA > .02 && hx > -1e3) {
+        var mx = hx - lx, my = hy - ly;
+        if (mx * mx + my * my > STEP * STEP) {
+          rib.push(hx, hy); lx = hx; ly = hy;
+          if (rib.length > RIB * 2) { rib.shift(); rib.shift(); }
+        }
+      } else if (hA <= .02) { rib.length = 0; lx = ly = -1e4; }
+
+      ctx.globalCompositeOperation =
+        document.documentElement.getAttribute("data-theme") === "light" ? "source-over" : "lighter";
+
+      /* ① 彗尾：自头至尾逐段变细变淡 */
+      var n = rib.length / 2;
+      if (n > 2) {
+        ctx.lineCap = "round";
+        for (i = 1; i < n; i++) {
+          var t = i / n;
+          ctx.strokeStyle = rgb(t * t * .46 * hA + .012);
+          ctx.lineWidth = t * 5 + .35;
+          ctx.beginPath();
+          ctx.moveTo(rib[(i - 1) * 2], rib[(i - 1) * 2 + 1]);
+          ctx.lineTo(rib[i * 2], rib[i * 2 + 1]);
+          ctx.stroke();
+        }
+      }
+
+      /* ② 能量核：外圈柔光 + 旋转弧 + 芯点；压在可点元素上时"锁定"放大 */
+      if (hA > .015 && hx > -1e3) {
+        hot += ((hoverHot ? 1 : 0) - hot) * (1 - Math.pow(.84, k));
+        var g = ctx.createRadialGradient(hx, hy, 0, hx, hy, 58);
+        g.addColorStop(0, rgb((.17 + .1 * hot) * hA));
+        g.addColorStop(.42, rgb(.06 * hA));
+        g.addColorStop(1, rgb(0));
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(hx, hy, 58, 0, 6.2832); ctx.fill();
+
+        var seg = 3 + (hot > .5 ? 1 : 0);
+        var rot = tf * .02, r0 = 11.5 + 3.2 * hot + Math.sin(tf * .045) * 1.1;
+        ctx.strokeStyle = rgb((.5 + .4 * hot) * hA); ctx.lineWidth = 1 + hot * .4;
+        for (i = 0; i < seg; i++) {
+          var a0 = rot + i * (6.2832 / seg);
+          ctx.beginPath(); ctx.arc(hx, hy, r0, a0, a0 + 1.5 - .9 * hot); ctx.stroke();
+        }
+        ctx.fillStyle = "rgba(255,255,255," + ((.8 + .2 * hot) * hA) + ")";
+        ctx.beginPath(); ctx.arc(hx, hy, 1.6 + hot * .8, 0, 6.2832); ctx.fill();
+      }
+
+      /* ③ 行进时向后甩火星：方向由位移定（限制在后向 ±63° 锥角），快则溅得远 */
+      if (on && hA > .35 && sp > 1.3) {
+        var back = Math.atan2(dy, dx) + Math.PI;
+        var cnt = Math.round(Math.min(5, 1 + (sp / 3.5 | 0)) * Math.min(2, k));
+        for (i = 0; i < cnt; i++) {
+          var a = back + (Math.random() - .5) * 2.2;
+          var m = (Math.random() * .8 + .35) * Math.min(6, sp * .55 + .8);
+          spawn(hx + (Math.random() - .5) * 4, hy + (Math.random() - .5) * 4,
+                Math.cos(a) * m, Math.sin(a) * m,
+                24 + Math.random() * 26, Math.random() * 1.5 + .9,
+                Math.random() < .28);
+        }
+      }
+
+      /* ④ 火星池（点击炸开的也在这里衰减） */
+      for (i = parts.length - 1; i >= 0; i--) {
+        p = parts[i];
+        p.x += p.vx * k; p.y += p.vy * k;
+        p.vx *= kD; p.vy = p.vy * kD + .012 * k;    // 轻微下坠，像散落火星
+        if ((p.t -= k) <= 0) { parts.splice(i, 1); continue; }
+        var fade = p.t / p.m;
+        ctx.fillStyle = p.w ? "rgba(255,255,255," + (fade * .62) + ")" : rgb(fade * .78);
+        ctx.fillRect(p.x - p.s / 2, p.y - p.s / 2, p.s, p.s);
+      }
+
+      /* 完全静止 → 清屏并休眠，不空转烧电（下一次指针移动自动唤醒） */
+      if (hA < .012 && !parts.length && idle > IDLE + 400) { ctx.clearRect(0, 0, W, H); return; }
+      raf = requestAnimationFrame(frame);
+    }
+    /* 只在"从休眠中被唤醒"时重置时间基准 —— 每帧都重置会让 dt 退化成鼠标事件间隔 */
+    function start() { if (!raf && live) { last = performance.now(); raf = requestAnimationFrame(frame); } }
+    function stop() { if (raf) { cancelAnimationFrame(raf); raf = 0; } }
+
+    window.addEventListener("pointermove", function (e) {
+      if (e.pointerType && e.pointerType !== "mouse") return;
+      tx = e.clientX; ty = e.clientY; idle = 0;
+      var t = e.target;
+      hoverHot = !!(t && t.closest && t.closest("a,button,input,summary,.side a,.toc a"));
+      start();
+    }, { passive: true });
+    /* 指针离开窗口：清掉目标位，回来时不会拉出一道跨屏长丝 */
+    document.addEventListener("pointerleave", function () {
+      tx = ty = -1e4; idle = IDLE + 500;
+    }, { passive: true });
+
+    var rt = 0;
+    window.addEventListener("resize", function () {
+      clearTimeout(rt);
+      rt = setTimeout(size, 180);
+    });
+    document.addEventListener("visibilitychange", function () {
+      live = !document.hidden;
+      if (live) { idle = IDLE + 500; last = performance.now(); } else stop();
+    });
+
+    readColor(); size();
+  })();
+
   /* ---------- 换页冲击波：首次进入不播，之后每次切文档扫一道 ---------- */
   var fxFirst = true;
   function wipe() {
@@ -636,6 +816,7 @@
     d.style.left = e.clientX + "px";
     d.style.top = e.clientY + "px";
     document.body.appendChild(d);
+    if (fxSparks) fxSparks(e.clientX, e.clientY, 18);   // 光环 + 火花爆
     setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, 640);
   }, { passive: true });
 

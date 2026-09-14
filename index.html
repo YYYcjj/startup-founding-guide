@@ -14,12 +14,14 @@
 <body>
 <div class="progress" id="progress"></div>
 
-<!-- BG-3：星云 / 极光 / 等高线地形 / 透视地平 / 颗粒噪点（全部固定在最底层） -->
-<div class="fx-bg" aria-hidden="true">
+<!-- BG-3：星云 / 极光 / 等高线地形 / 透视地平 / 颗粒噪点（全部固定在最底层）
+     五层背景的强度、速率、构图由板块参数（CSS 变量 --bg-*）驱动，
+     滚动时还有一个统一的视差（JS 写 --par-*），所以翻板块是真的换风景 -->
+<div class="fx-bg" id="fxBg" aria-hidden="true">
   <div class="fx-nebula"><i></i><i></i><i></i></div>
   <div class="fx-aurora"><i></i><i></i><i></i><i></i><i></i></div>
   <div class="fx-terrain"></div>
-  <div class="fx-horizon"><i class="plane"></i></div>
+  <div class="fx-horizon"><i class="plane"></i><i class="haze"></i></div>
   <div class="fx-grain"></div>
 </div>
 
@@ -121,17 +123,36 @@
     return f.split("/").map(encodeURIComponent).join("/");
   }
 
-  /* ---------- 板块识别：取路径首段，用于按板块换色 ---------- */
+  /* ---------- 板块识别：取路径首段，用于按板块换色换景 ---------- */
   var SECS = ["公司", "家族", "个人与人际", "未来与投资", "附录"];
+  var SEC_MARK = { "公司": "①", "家族": "②", "个人与人际": "③", "未来与投资": "④", "附录": "⑤" };
+  var curSec = "";                     // 当前板块：用来判断"是不是真的换了环境"
+  var bgFirst = true;                  // 首屏没有"上一个环境"，不播重对焦
   function secOf(f) {
     var g = (f || "").split("/")[0];
     return SECS.indexOf(g) >= 0 ? g : "";
   }
+  /* 背景重对焦 + HUD 读数落定：这两个动作只在"板块真的变了"时发生。
+     首页与"入门"两篇属于无板块文档（data-sec 被移除），从板块走回首页
+     同样算换环境 —— 背景要从有性格的气候退回中性。 */
+  function bgFlip() {
+    if (reduceMotion) return;
+    /* 首屏那一次不算"切换" —— 无论是打开首页还是深链直接进某个板块，
+       第一次渲染都是"环境建立"而不是"环境改变"，不该在开场就闪一下。
+       这个门由 load() 的收尾关闭，所以从第二次板块变化起每次都播。 */
+    if (bgFirst) return;
+    var bg = $("fxBg"), hs = $("hudSec");
+    if (bg) { bg.classList.remove("sec-flip"); void bg.offsetWidth; bg.classList.add("sec-flip"); }
+    if (hs) { hs.classList.remove("flip"); void hs.offsetWidth; hs.classList.add("flip"); }
+  }
   function setPageSec(f) {
     var s = secOf(f);
+    var changed = s !== curSec;
+    curSec = s;
     if (s) document.documentElement.setAttribute("data-sec", s);
     else document.documentElement.removeAttribute("data-sec");
     hudSecUpdate();                    // 左下角遥测条同步显示当前板块
+    if (changed) bgFlip();
   }
   /* 给指向各板块的站内链接打色标 —— 一眼看出这条链接跳到哪个板块 */
   function tagLinks() {
@@ -256,6 +277,7 @@
       window.scrollTo(0, 0);
       armReveal();
       wipe();               // 换页冲击波（首次进入不播）
+      bgFirst = false;      // 首屏渲染完毕 —— 此后切板块，背景就该"重对焦"了
       decodeH1();           // 标题字形逐帧落定
       onScroll();           // 立刻同步 HUD 读数的百分比
       // 记住位置（含锚点）
@@ -512,6 +534,46 @@
      FX-2：粒子星网 / 换页冲击波 / 标题解码 / HUD 遥测 / 点击涟漪 / 开机自检
      全部在 prefers-reduced-motion 下自动关闭
      ============================================================ */
+
+  /* ---------- BG 视差：滚动时五层背景以不同速率位移 ----------
+     原来的纵深只做在星野 canvas 里（近层星跑得快），CSS 那五层背景是钉死的 ——
+     滚动时一动不动，等于一张贴在最后的壁纸。这里给星云/极光/地形/地平各一个
+     最大位移（近层动得多、地面几乎不动），随滚动写入 --par-* 变量。
+     两个关键点：
+       ① 走 CSS 的独立属性 translate，**不是 transform**。极光帘、等高线地形、
+          第三团星云都在用 animation 改 transform，写内联 transform 会被动画
+          每帧顶掉；translate 属性与 transform 是复合关系，各改各的（见 style.css）。
+       ② rAF 节流 + 低通。滚动事件极为密集，如果每次回调都写四个变量，
+          等于每像素触发一次样式重算；这里只在帧里写，并让背景"缓半拍" ——
+          快速滚动时近层比远层晚一点跟上，纵深感是这么来的。
+     位置映射成 0~1 后走完就不动了：位移在 2200px 内线性展开，再往下
+     背景已经"到位"，读者也早就进入正文，不需要继续漂。 */
+  (function bgParallax() {
+    var root = document.documentElement;
+    if (reduceMotion || !root || !root.style) return;
+    var R = { neb: -70, aur: -122, ter: 66, hor: -22 };   // 各层最大位移(px)
+    var SPAN = 2200;
+    var cur = 0, tgt = 0, raf = 0, last = 0;
+    function apply(now) {
+      raf = 0;
+      /* 时间常数写法定值，不写"每帧乘 0.16" —— 后者在 30Hz 屏上会慢一倍、
+         在 120Hz 屏上快一倍。按 dt 归一后各刷新率手感一致。 */
+      var k = last ? Math.min(4, Math.max(.25, (now - last) / 16.67)) : 1;
+      last = now;
+      var d = tgt - cur;
+      if (Math.abs(d) < .0006) cur = tgt; else cur += d * (1 - Math.pow(.84, k));
+      root.style.setProperty("--par-neb", (cur * R.neb).toFixed(2) + "px");
+      root.style.setProperty("--par-aur", (cur * R.aur).toFixed(2) + "px");
+      root.style.setProperty("--par-ter", (cur * R.ter).toFixed(2) + "px");
+      root.style.setProperty("--par-hor", (cur * R.hor).toFixed(2) + "px");
+      if (cur !== tgt) raf = requestAnimationFrame(apply);
+    }
+    window.addEventListener("scroll", function () {
+      var sy = window.pageYOffset || root.scrollTop || 0;
+      tgt = sy < 0 ? 0 : (sy > SPAN ? 1 : sy / SPAN);
+      if (!raf) raf = requestAnimationFrame(apply);
+    }, { passive: true });
+  })();
 
   /* ---------- 深空星野：三层视差星 + 星芒光晕 + 上飘浮尘 + 偶发流星 ----------
      取代原来的单层粒子星网。远/中/近三层各自不同的大小、亮度、自漂速度与
@@ -1380,7 +1442,10 @@
   var hudSec = $("hudSec"), hudPct = $("hudPct"), hudTime = $("hudTime");
   function hudSecUpdate() {
     var s = document.documentElement.getAttribute("data-sec");
-    if (hudSec) hudSec.textContent = s || "INDEX";
+    if (!hudSec) return;
+    /* 带上序号：五个板块一眼可辨，且与侧栏分组标题的 ①②③ 对得上 */
+    if (s) hudSec.innerHTML = '<i class="hud-idx">' + (SEC_MARK[s] || "") + "</i>" + s;
+    else hudSec.textContent = "INDEX";
   }
   (function hudClock() {
     if (!hudTime) return;

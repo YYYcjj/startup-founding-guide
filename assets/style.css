@@ -2,6 +2,16 @@
    霓虹暗黑 · 科幻终端风
    深黑底 / 霓虹青紫 / 发光描边 / 网格地平线
    ============================================================ */
+
+/* —— 把主色注册成 <color>：只有注册过的自定义属性才允许 transition。
+      注册之后，切板块时全站颜色（含背景五层）是"缓缓换过来的"，
+      而不是啪地一跳 —— 环境变了，但眼睛不用跟着重新对焦。
+      不支持 @property 的旧浏览器里这条 transition 声明直接无效，
+      退回原来的瞬切，没有任何副作用。 —— */
+@property --neon   { syntax: "<color>"; inherits: true; initial-value: #22d3ee; }
+@property --neon-2 { syntax: "<color>"; inherits: true; initial-value: #7c6cff; }
+html { transition: --neon .55s ease, --neon-2 .55s ease; }
+
 :root {
   /* —— 深空蓝：提亮一档，避免死黑 —— */
   --bg: #111a2b;
@@ -33,6 +43,22 @@
   --radius: 3px;
   --header-h: 48px;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* —— 背景场景：五层背景的"基底强度"。元素规则统一写成
+        calc(基底 × 倍率)，于是：
+          · 深浅主题只覆盖「基底」（浅底上一有色就脏，整体压到 1/3 量级）
+          · 板块只覆盖「倍率」
+        两边互不干扰，加一个板块不必重写 11 条子元素规则。 —— */
+  --neb-1: .30; --neb-2: .28; --neb-3: .24;   /* 星云三层 */
+  --ter-o: .46; --hor-o: .34;                 /* 等高线地形 / 透视地平 */
+  /* 板块倍率。默认 1 —— 首页与"入门"两篇不属于任何板块，走中性配置 */
+  --bg-neb: 1; --bg-aur: 1; --bg-ter: 1; --bg-hor: 1;
+  --bg-rate: 1;                               /* 背景动画总速率：家族最缓、公司最躁 */
+  --bg-haze: 1;                               /* 地平雾化浓度：暖雾板块浓、硬网格板块淡 */
+  --bg-ter-h: 78vh;                           /* 构图：地形高度（板块的"地形感"强弱） */
+  --bg-aur-blur: 26px;                        /* 构图：极光柔度 */
+  /* 视差位移（JS 每帧只写这几个变量，值自带单位） */
+  --par-neb: 0px; --par-aur: 0px; --par-ter: 0px; --par-hor: 0px;
 }
 
 /* —— 浅色（保留可切换，同一套霓虹语义） —— */
@@ -55,19 +81,56 @@
   --glow: color-mix(in srgb, var(--neon) 22%, transparent);
   --glow-2: color-mix(in srgb, var(--neon-2) 18%, transparent);
   --grid: rgba(20, 90, 150, .05);
+  /* 浅底上一点色就"脏"：背景基底整体压到深底的 1/3 量级。
+     倍率（--bg-*）不在这里覆盖 —— 那是板块的差异，浅色下同样要成立 */
+  --neb-1: .09; --neb-2: .09; --neb-3: .09;
+  --ter-o: .30; --hor-o: .40;
 }
 
 /* ============================================================
-   板块配色：只覆盖 --neon / --neon-2，glow / accent-soft / neon-3
-   等全部由 color-mix 派生，因此整套页面配色会自动跟随。
-   规则选择器不带元素限定，所以 body、侧栏 .group 等任意节点
-   都能通过 data-sec 局部换色。
+   板块配色 + 板块场景
+   前面只覆盖 --neon / --neon-2，glow / accent-soft / neon-3 等全部由
+   color-mix 派生，于是整套页面配色自动跟随。
+   后面那组 --bg-* 才是"换天气"：光换色的话，五个板块的背景构图
+   一模一样，翻页只是同一片天空换了滤镜。每个板块现在有自己的
+   主导层（谁最抢眼）、自己的节奏（动得多快）、自己的构图（地形多高、
+   极光多柔），所以从"公司"翻到"家族"，背景是真的换了一种风景。
+   规则选择器不带元素限定，body、侧栏 .group 等任意节点都能局部换色。
    ============================================================ */
-[data-sec="公司"]       { --neon: #22d3ee; --neon-2: #7c6cff; }  /* 青 → 紫：商业科技 */
-[data-sec="家族"]       { --neon: #f472b6; --neon-2: #c084fc; }  /* 粉 → 紫：温情 */
-[data-sec="个人与人际"]  { --neon: #34f5c5; --neon-2: #22d3ee; }  /* 薄荷 → 青：成长 */
-[data-sec="未来与投资"]  { --neon: #fbbf24; --neon-2: #fb923c; }  /* 金 → 橙：资本 */
-[data-sec="附录"]       { --neon: #a78bfa; --neon-2: #7c6cff; }  /* 紫 → 靛：工具 */
+[data-sec="公司"]       {
+  --neon: #22d3ee; --neon-2: #7c6cff;                 /* 青 → 紫：商业科技 */
+  /* 工地感：地平网格最抢眼，地形压低让位给网格；节奏偏快，像还在施工 */
+  --bg-neb: 1; --bg-aur: .78; --bg-ter: .72; --bg-hor: 1.35;
+  --bg-rate: 1.12; --bg-ter-h: 64vh; --bg-aur-blur: 22px; --bg-haze: .72;
+}
+[data-sec="家族"]       {
+  --neon: #f472b6; --neon-2: #c084fc;                 /* 粉 → 紫：温情 */
+  /* 山峦暖雾：极光最浓最柔（blur 36px 糊成一片霞），等高线抬高成山；
+     冷硬的透视网格几乎关掉 —— 讲家里的事不该踩在电路板上 */
+  --bg-neb: .95; --bg-aur: 1.3; --bg-ter: 1.2; --bg-hor: .3;
+  --bg-rate: .82; --bg-ter-h: 86vh; --bg-aur-blur: 36px; --bg-haze: 1.25;
+}
+[data-sec="个人与人际"]  {
+  --neon: #34f5c5; --neon-2: #22d3ee;                 /* 薄荷 → 青：成长 */
+  /* 成长山脊：等高线是全站最强的一档（一层层往上叠 = 长起来），
+     星星退后，地平只留一点点 */
+  --bg-neb: .85; --bg-aur: 1.05; --bg-ter: 1.35; --bg-hor: .55;
+  --bg-rate: .95; --bg-ter-h: 82vh; --bg-aur-blur: 30px; --bg-haze: 1.12;
+}
+[data-sec="未来与投资"]  {
+  --neon: #fbbf24; --neon-2: #fb923c;                 /* 金 → 橙：资本 */
+  /* 日出跑道：地平网格拉到最亮（一条铺向远端的路），星云压到最淡，
+     像天还没亮透 —— 视线自然被引向前方 */
+  --bg-neb: .68; --bg-aur: .85; --bg-ter: .8; --bg-hor: 1.3;
+  --bg-rate: 1.05; --bg-ter-h: 70vh; --bg-aur-blur: 26px; --bg-haze: .8;
+}
+[data-sec="附录"]       {
+  --neon: #a78bfa; --neon-2: #7c6cff;                 /* 紫 → 靛：工具 */
+  /* 蓝图工具台：极光退到最淡、地形压低，只剩网格与星点 —— 最安静的一档，
+     查资料时背景不该抢戏 */
+  --bg-neb: .72; --bg-aur: .5; --bg-ter: .55; --bg-hor: 1;
+  --bg-rate: .9; --bg-ter-h: 58vh; --bg-aur-blur: 24px; --bg-haze: 1;
+}
 
 /* 浅色主题下的板块色：同一色相压深，保证白底可读 */
 [data-theme="light"][data-sec="公司"]       { --neon: #0891b2; --neon-2: #6d4aff; }
@@ -674,7 +737,19 @@ body::after {
   background: var(--neon); box-shadow: 0 0 8px var(--glow);
   animation: fx-pulse 1.6s ease-in-out infinite;
 }
-.fx-hud .hud-sec { color: var(--neon); text-shadow: 0 0 8px var(--glow); }
+.fx-hud .hud-sec { color: var(--neon); text-shadow: 0 0 8px var(--glow); transition: color .55s ease; }
+/* 板块序号：跟着板块走的小角标，让"我现在在哪一块"一眼可读 */
+.fx-hud .hud-sec .hud-idx {
+  color: var(--text-3); margin-right: 4px;
+  font-size: 9.5px; letter-spacing: .06em;
+}
+/* 切板块时读数"重新落定"一次 —— 与背景的重对焦同时发生 */
+.fx-hud .hud-sec.flip { animation: hud-sec-flip .95s cubic-bezier(.2, 0, .2, 1); }
+@keyframes hud-sec-flip {
+  0%   { opacity: 0; filter: blur(3px); letter-spacing: .34em; }
+  55%  { opacity: 1; letter-spacing: .16em; }
+  100% { opacity: 1; filter: blur(0); letter-spacing: inherit; }
+}
 .fx-hud .hud-sep { color: var(--border-2); }
 .fx-hud .hud-num { color: var(--text-2); font-variant-numeric: tabular-nums; }
 @media (max-width: 620px) {
@@ -795,7 +870,7 @@ html.fx-cursor [contenteditable="true"], html.fx-cursor [contenteditable=""] { c
 
 /* —— 星云：三团超大柔光，几十秒一轮缓慢漂移 ——
      screen 混合让暗底上的色团像"自身发光的气体"而不是贴纸 */
-.fx-nebula { position: absolute; inset: -12%; }
+.fx-nebula { position: absolute; inset: -12%; translate: 0 var(--par-neb, 0px); }
 .fx-nebula i {
   position: absolute; display: block; border-radius: 50%;
   mix-blend-mode: screen; will-change: transform;
@@ -804,19 +879,19 @@ html.fx-cursor [contenteditable="true"], html.fx-cursor [contenteditable=""] { c
   width: 62vw; height: 62vw; left: -10%; top: -16%;
   background: radial-gradient(circle at 50% 50%,
     color-mix(in srgb, var(--neon) 30%, transparent), transparent 66%);
-  opacity: .30; animation: fx-neb-a 58s ease-in-out infinite;
+  opacity: calc(var(--neb-1) * var(--bg-neb, 1)); animation: fx-neb-a 58s ease-in-out infinite;
 }
 .fx-nebula i:nth-child(2) {
   width: 54vw; height: 54vw; right: -8%; top: -6%;
   background: radial-gradient(circle at 50% 50%,
     color-mix(in srgb, var(--neon-2) 32%, transparent), transparent 68%);
-  opacity: .28; animation: fx-neb-b 74s ease-in-out infinite;
+  opacity: calc(var(--neb-2) * var(--bg-neb, 1)); animation: fx-neb-b 74s ease-in-out infinite;
 }
 .fx-nebula i:nth-child(3) {
   width: 68vw; height: 54vw; left: 12%; bottom: -8%;
   background: radial-gradient(circle at 50% 50%,
     color-mix(in srgb, var(--neon) 24%, transparent), transparent 70%);
-  opacity: .24; animation: fx-neb-c 92s ease-in-out infinite;
+  opacity: calc(var(--neb-3) * var(--bg-neb, 1)); animation: fx-neb-c 92s ease-in-out infinite;
 }
 @keyframes fx-neb-a {
   0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
@@ -828,65 +903,91 @@ html.fx-cursor [contenteditable="true"], html.fx-cursor [contenteditable=""] { c
   40%      { transform: translate3d(-5vw, 5vh, 0) scale(.92); }
   75%      { transform: translate3d(3vw, 2vh, 0) scale(1.16); }
 }
+/* 呼吸写在 opacity 上会盖掉元素自身的 opacity（动画期间 keyframes 优先），
+   所以这里的明暗也要乘倍率，否则第三团星云永远不吃板块参数。
+   系数 .75 / 1.125 = 原来的 .18→.27 相对元素值 .24 的比例 */
 @keyframes fx-neb-c {
-  0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: .18; }
-  50%      { transform: translate3d(4vw, -3vh, 0) scale(1.12); opacity: .27; }
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: calc(var(--neb-3, .24) * .75 * var(--bg-neb, 1)); }
+  50%      { transform: translate3d(4vw, -3vh, 0) scale(1.12); opacity: calc(var(--neb-3, .24) * 1.125 * var(--bg-neb, 1)); }
 }
 
 /* —— 极光：五道被模糊拉开的"竖帘"，高低错落、各自摆动 ——
      做法上是窄长椭圆 → 边缘天然柔和，不会糊成一条方块。
-     帘幕整体斜置 -7°，合起来就是一片纵向流动的极光。 */
-.fx-aurora { position: absolute; left: -14%; right: -14%; top: -22%; height: 96vh; transform: rotate(-7deg); }
+     帘幕整体斜置 -7°，合起来就是一片纵向流动的极光。
+     每层自带一个 --aur-o（目标亮度），元素 opacity 与 keyframes 里的呼吸
+     都从它派生：keyframes 里的 var() 是按元素求值的，所以五层能共用同一套
+     关键帧，却各自保持自己的浓淡 —— 否则最淡的第 3 层会被绝对量覆盖，
+     和第一层一样亮，五条帘子的层次就没了。
+     视差用独立的 translate 属性，与 animation 的 transform 叠加，
+     不会互相顶掉（transform 简写会）。 */
+.fx-aurora {
+  position: absolute; left: -14%; right: -14%; top: -22%; height: 96vh;
+  transform: rotate(-7deg);
+  translate: 0 var(--par-aur, 0px);
+}
 .fx-aurora i {
   position: absolute; display: block; border-radius: 50%;
-  filter: blur(26px); mix-blend-mode: screen;
+  filter: blur(var(--bg-aur-blur, 26px)); mix-blend-mode: screen;
   will-change: transform, opacity;
 }
 .fx-aurora i:nth-child(1) {
+  --aur-o: .46;
   left: 5%; width: 13%; top: 4%; height: 74%;
   background: linear-gradient(180deg, transparent,
     color-mix(in srgb, var(--neon) 60%, transparent) 22%,
     color-mix(in srgb, var(--neon) 24%, transparent) 58%, transparent);
-  opacity: .46; animation: fx-aur-a 18s ease-in-out infinite;
+  opacity: calc(var(--aur-o) * var(--bg-aur, 1));
+  animation: fx-aur-a 18s ease-in-out infinite;
 }
 .fx-aurora i:nth-child(2) {
+  --aur-o: .40;
   left: 21%; width: 9%; top: 13%; height: 62%;
   background: linear-gradient(180deg, transparent,
     color-mix(in srgb, var(--neon-2) 64%, transparent) 26%,
     color-mix(in srgb, var(--neon-2) 20%, transparent) 62%, transparent);
-  opacity: .40; animation: fx-aur-b 25s ease-in-out infinite;
+  opacity: calc(var(--aur-o) * var(--bg-aur, 1));
+  animation: fx-aur-b 25s ease-in-out infinite;
 }
 .fx-aurora i:nth-child(3) {
+  --aur-o: .24;
   left: 35%; width: 13%; top: 0; height: 82%;
   background: linear-gradient(180deg, transparent,
     color-mix(in srgb, var(--neon) 40%, transparent) 30%, transparent 84%);
-  opacity: .24; animation: fx-aur-a 32s ease-in-out infinite reverse;
+  opacity: calc(var(--aur-o) * var(--bg-aur, 1));
+  animation: fx-aur-a 32s ease-in-out infinite reverse;
 }
 .fx-aurora i:nth-child(4) {
+  --aur-o: .36;
   left: 57%; width: 11%; top: 8%; height: 68%;
   background: linear-gradient(180deg, transparent,
     color-mix(in srgb, var(--neon-2) 50%, transparent) 24%, transparent 80%);
-  opacity: .36; animation: fx-aur-b 21s ease-in-out infinite;
+  opacity: calc(var(--aur-o) * var(--bg-aur, 1));
+  animation: fx-aur-b 21s ease-in-out infinite;
 }
 .fx-aurora i:nth-child(5) {
+  --aur-o: .28;
   left: 76%; width: 15%; top: 2%; height: 76%;
   background: linear-gradient(180deg, transparent,
     color-mix(in srgb, var(--neon) 54%, transparent) 28%, transparent 86%);
-  opacity: .28; animation: fx-aur-a 38s ease-in-out infinite;
+  opacity: calc(var(--aur-o) * var(--bg-aur, 1));
+  animation: fx-aur-a 38s ease-in-out infinite;
 }
+/* 呼吸幅度沿用原来的相对关系（fx-aur-a 以 .46 为基准 .40↔.74，
+   fx-aur-b 以 .40 为基准 .56↔.26），只是改为乘各自的目标亮度 */
 @keyframes fx-aur-a {
-  0%, 100% { transform: translate3d(0, 0, 0) scaleY(1) skewX(-4deg); opacity: .40; }
-  50%      { transform: translate3d(1.6%, 3%, 0) scaleY(1.24) skewX(6deg); opacity: .74; }
+  0%, 100% { transform: translate3d(0, 0, 0) scaleY(1) skewX(-4deg); opacity: calc(var(--aur-o, .46) * .87 * var(--bg-aur, 1)); }
+  50%      { transform: translate3d(1.6%, 3%, 0) scaleY(1.24) skewX(6deg); opacity: calc(var(--aur-o, .46) * 1.61 * var(--bg-aur, 1)); }
 }
 @keyframes fx-aur-b {
-  0%, 100% { transform: translate3d(0, 0, 0) scaleY(1.14) skewX(7deg); opacity: .56; }
-  50%      { transform: translate3d(-2.2%, 5%, 0) scaleY(.88) skewX(-6deg); opacity: .26; }
+  0%, 100% { transform: translate3d(0, 0, 0) scaleY(1.14) skewX(7deg); opacity: calc(var(--aur-o, .40) * 1.4 * var(--bg-aur, 1)); }
+  50%      { transform: translate3d(-2.2%, 5%, 0) scaleY(.88) skewX(-6deg); opacity: calc(var(--aur-o, .40) * .65 * var(--bg-aur, 1)); }
 }
 
 /* —— 等高线地形：三层不同椭圆心的同心环，往上渐隐 ——
-     比直线网格"有机"，是自然感里最不喧哗的一笔 */
+     比直线网格"有机"，是自然感里最不喧哗的一笔。
+     高度吃 --bg-ter-h：家族/个人两个板块把它抬成"山"，公司/附录压低成远景 */
 .fx-terrain {
-  position: absolute; left: -12%; right: -12%; bottom: -6%; height: 78vh;
+  position: absolute; left: -12%; right: -12%; bottom: -6%; height: var(--bg-ter-h, 78vh);
   background-image:
     repeating-radial-gradient(112% 74% at 16% 128%, transparent 0 25px,
       color-mix(in srgb, var(--neon) 20%, transparent) 25px 26px),
@@ -896,12 +997,14 @@ html.fx-cursor [contenteditable="true"], html.fx-cursor [contenteditable=""] { c
       color-mix(in srgb, var(--neon) 12%, transparent) 45px 46px);
   -webkit-mask-image: linear-gradient(to top, #000 0%, rgba(0, 0, 0, .5) 34%, transparent 78%);
   mask-image: linear-gradient(to top, #000 0%, rgba(0, 0, 0, .5) 34%, transparent 78%);
-  opacity: .46;
+  opacity: calc(var(--ter-o) * var(--bg-ter, 1));
+  translate: 0 var(--par-ter, 0px);
   animation: fx-ter-breathe 26s ease-in-out infinite;
 }
+/* 呼吸的明暗必须乘倍率，否则动画一跑板块参数就失效 */
 @keyframes fx-ter-breathe {
-  0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: .40; }
-  50%      { transform: translate3d(0, -1.6%, 0) scale(1.035); opacity: .56; }
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: calc(var(--ter-o, .46) * .87 * var(--bg-ter, 1)); }
+  50%      { transform: translate3d(0, -1.6%, 0) scale(1.035); opacity: calc(var(--ter-o, .46) * 1.22 * var(--bg-ter, 1)); }
 }
 
 /* —— 透视地平：底部一块向后倒伏的网格平面，持续朝观察者滚动 ——
@@ -910,6 +1013,8 @@ html.fx-cursor [contenteditable="true"], html.fx-cursor [contenteditable=""] { c
   position: absolute; left: -30%; right: -30%; bottom: 0; height: 18vh;
   overflow: hidden;
   transform: translateZ(0);
+  /* 地面几乎不参与视差（透视上它最远），给 15% 的量就够破掉"贴纸感" */
+  translate: 0 var(--par-hor, 0px);
 }
 .fx-horizon .plane {
   position: absolute; left: 0; right: 0; bottom: 0; height: 240%;
@@ -917,7 +1022,7 @@ html.fx-cursor [contenteditable="true"], html.fx-cursor [contenteditable=""] { c
     linear-gradient(color-mix(in srgb, var(--neon) 30%, transparent) 1px, transparent 1px),
     linear-gradient(90deg, color-mix(in srgb, var(--neon) 22%, transparent) 1px, transparent 1px);
   background-size: 50px 50px;
-  opacity: .34;
+  opacity: calc(var(--hor-o) * var(--bg-hor, 1));
   transform-origin: 50% 100%;
   animation: fx-hrun 3.4s linear infinite;
   will-change: transform;
@@ -926,7 +1031,11 @@ html.fx-cursor [contenteditable="true"], html.fx-cursor [contenteditable=""] { c
   from { transform: perspective(320px) rotateX(75deg) translateY(0); }
   to   { transform: perspective(320px) rotateX(75deg) translateY(50px); }
 }
-/* 雾化：远端溶进背景、近处略压暗，中段最亮 —— 才像"被地平光打亮的地面" */
+/* 雾化：远端溶进背景、近处略压暗，中段最亮 —— 才像"被地平光打亮的地面"。
+   这层在 CSS 里存在了很久，但 HTML 里一直没有对应元素，所以底部网格
+   一直是"贴"在画面上的。补上元素之后，网格朝观察者滚动时会从雾里钻出来，
+   远近关系立刻成立。浓度乘 --bg-haze：家族/个人这种"暖雾"板块浓一些，
+   公司/未来这种"硬网格"板块淡一些。 */
 .fx-horizon .haze {
   position: absolute; inset: 0; display: block;
   background: linear-gradient(to top,
@@ -934,6 +1043,7 @@ html.fx-cursor [contenteditable="true"], html.fx-cursor [contenteditable=""] { c
     transparent 30%,
     color-mix(in srgb, var(--bg) 62%, transparent) 66%,
     color-mix(in srgb, var(--bg) 99%, transparent) 100%);
+  opacity: var(--bg-haze, 1);
 }
 /* 地平光：一团贴地浮起的微光，不是一条硬线 */
 .fx-horizon::after {
@@ -954,6 +1064,39 @@ html.fx-cursor [contenteditable="true"], html.fx-cursor [contenteditable=""] { c
   opacity: .08; mix-blend-mode: overlay;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.45'/%3E%3C/svg%3E");
   background-size: 160px 160px;
+}
+
+/* —— 板块场景 · 速率 ——
+     只覆盖时长，不重写整套动画：用与上面完全相同的选择器（特异性相同、
+     位置在后）覆写 animation-duration，calc(基准 / 速率) —— 速率越大动得越快。
+     于是"公司"的地平跑得急（还在施工）、"家族"的极光荡得慢（能坐下来聊）。
+     集中放在这里而不是散在原规则里，是为了让"板块差异"成为可整块回退的一节。 */
+.fx-nebula i:nth-child(1) { animation-duration: calc(58s / var(--bg-rate, 1)); }
+.fx-nebula i:nth-child(2) { animation-duration: calc(74s / var(--bg-rate, 1)); }
+.fx-nebula i:nth-child(3) { animation-duration: calc(92s / var(--bg-rate, 1)); }
+.fx-aurora i:nth-child(1) { animation-duration: calc(18s / var(--bg-rate, 1)); }
+.fx-aurora i:nth-child(2) { animation-duration: calc(25s / var(--bg-rate, 1)); }
+.fx-aurora i:nth-child(3) { animation-duration: calc(32s / var(--bg-rate, 1)); }
+.fx-aurora i:nth-child(4) { animation-duration: calc(21s / var(--bg-rate, 1)); }
+.fx-aurora i:nth-child(5) { animation-duration: calc(38s / var(--bg-rate, 1)); }
+.fx-terrain { animation-duration: calc(26s / var(--bg-rate, 1)); }
+.fx-horizon .plane { animation-duration: calc(3.4s / var(--bg-rate, 1)); }
+/* 极光五道靠"不同的动画名"错开相位，速率一变会一起归零重播 ——
+   给几条补上负延迟，免得切板块时五条帘子同时从同一起点摆起来（画面会抖一下） */
+.fx-aurora i:nth-child(2) { animation-delay: calc(-3s / var(--bg-rate, 1)); }
+.fx-aurora i:nth-child(3) { animation-delay: calc(-7s / var(--bg-rate, 1)); }
+.fx-aurora i:nth-child(4) { animation-delay: calc(-11s / var(--bg-rate, 1)); }
+.fx-aurora i:nth-child(5) { animation-delay: calc(-15s / var(--bg-rate, 1)); }
+
+/* —— 板块切换：背景整体"重对焦"一次 ——
+     .fx-bg 挂上 .sec-flip 时播一遍：先亮起来、轻微糊开，再收回来。
+     它与 --neon 的 0.55s 过渡叠在一起，读起来是"环境重新校准"，
+     而不是背景被偷换成另一张图。首次进入不播（那时没有"上一个环境"）。 */
+.fx-bg.sec-flip { animation: fx-sec-flip 1.05s cubic-bezier(.35, 0, .2, 1); }
+@keyframes fx-sec-flip {
+  0%   { filter: brightness(1) blur(0); transform: scale(1); }
+  28%  { filter: brightness(1.4) blur(3px); transform: scale(1.014); }
+  100% { filter: brightness(1) blur(0); transform: scale(1); }
 }
 
 /* —— 视口边框：四角 L 形括号 + 内侧发丝，把整个页面框成一块仪表屏 —— */
@@ -977,24 +1120,23 @@ html.fx-cursor [contenteditable="true"], html.fx-cursor [contenteditable=""] { c
 
 /* —— 浅色主题：screen 混合在白底上会消失，改用 multiply 做淡彩 ——
      分寸要更小：白底上一点色就"脏"，加上侧栏本身是半透明的，
-     极光一浓整块面板就发灰蓝。 */
+     极光一浓整块面板就发灰蓝。
+     强度本身（星云 .09 / 地形 .30 / 地平 .40）已经交给 :root 的基底变量，
+     这里只负责"怎么混"和"糊多柔"，不再逐层写死 opacity ——
+     否则板块倍率在浅色主题下会被这些覆盖吃掉。 */
 [data-theme="light"] .fx-nebula i,
 [data-theme="light"] .fx-aurora i { mix-blend-mode: multiply; }
-[data-theme="light"] .fx-nebula i { opacity: .09; }
-[data-theme="light"] .fx-aurora i { opacity: .17; }
-[data-theme="light"] .fx-aurora i { filter: blur(34px); }
-[data-theme="light"] .fx-terrain { opacity: .3; }
-[data-theme="light"] .fx-horizon .plane { opacity: .4; }
+[data-theme="light"] .fx-aurora i { filter: blur(calc(var(--bg-aur-blur, 26px) * 1.3)); }
 [data-theme="light"] .fx-grain { opacity: .18; mix-blend-mode: multiply; }
 [data-theme="light"] .fx-frame i { opacity: .5; }
 
-/* —— 小屏：模糊层最贵，减一条极光、缩小地形与地平 —— */
+/* —— 小屏：模糊层最贵，减两条极光；地形/地平按板块高度等比缩 —— */
 @media (max-width: 820px) {
   .fx-frame { display: none; }
   .fx-aurora i:nth-child(4),
   .fx-aurora i:nth-child(5) { display: none; }
-  .fx-aurora i { filter: blur(20px); }
-  .fx-terrain { height: 48vh; opacity: .34; }
+  .fx-aurora i { filter: blur(calc(var(--bg-aur-blur, 26px) * .78)); }
+  .fx-terrain { height: calc(var(--bg-ter-h, 78vh) * .62); }
   .fx-horizon { height: 16vh; }
 }
 
@@ -1014,11 +1156,18 @@ html.fx-cursor [contenteditable="true"], html.fx-cursor [contenteditable=""] { c
   .pager a::after { display: none; }
   .fx-trail, .fx-ripple, .fx-wipe { display: none !important; }
   .fx-boot { display: none !important; }
-  /* 背景层保留静止的星云/地形（构图还在），只是不再运动 */
+  /* 背景层保留静止的星云/地形（构图还在），只是不再运动。
+     动画一停，keyframes 里那层"呼吸用的 opacity"也随之失效 ——
+     正好让元素自身的 calc(基底 × 倍率) 接管，板块差异照样在 */
   .fx-nebula i,
   .fx-aurora i,
   .fx-terrain,
   .fx-horizon .plane { animation: none !important; }
   .fx-horizon .plane { transform: perspective(320px) rotateX(75deg); }
   .fx-grain { display: none; }
+  /* 背景重对焦 + 读数落定都属于"动效"，一并关掉（颜色过渡是无障碍允许的） */
+  .fx-bg.sec-flip,
+  .fx-hud .hud-sec.flip { animation: none !important; }
+  /* 滚动视差也停：只留静态构图，不做任何位移 */
+  .fx-nebula, .fx-aurora, .fx-terrain, .fx-horizon { translate: none !important; }
 }

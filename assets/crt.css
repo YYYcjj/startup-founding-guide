@@ -1,0 +1,251 @@
+/* ============================================================
+   显示增强层 · CRT 质感（独立模块）
+   ============================================================
+   这一层只做"把整站框成一块老显示器"的视觉叠加，不参与排版：
+     色散（镜头没合焦时的彩边）+ 半色调网点（印刷网屏 / 荫罩）
+     + 暗角 · 快速扫描光条 · 信号撕裂带 · 边框色差与偶发抖动
+   它盖在正文之上（z-index 8990），所以强度全部压得很低。
+   分寸不是猜的，是逐层隔离采样量出来的：
+     · 色散只作用在**贴边**（画面内部贡献 0,0,0，不脏画面）
+     · 网点整屏只动 3~4 级（第一版给到 .55 时被抬了 +11/+15，像蒙了层灰雾）
+     · 暗角负责压边角，中心不动
+
+   为什么单独一个文件：这一层可以整体丢掉。想退回"没有 CRT 的版本"，
+   把 nav.js 里那段装配代码注释掉即可，其余样式与排版完全不受影响。
+
+   强度仍然是「基底 × 倍率」两层（与背景五层同一套约定）：
+     · 基底 --chroma-o / --half-o / --vign-o —— 由深浅主题覆盖
+     · 倍率 --bg-chroma / --bg-half / --bg-glitch / --bg-crt —— 由板块覆盖
+   于是"公司"是施工现场的仪表盘（最猛），"家族"是一台关掉了干扰的老电视（最弱）。
+   ============================================================ */
+
+/* —— 基底强度 —— */
+:root {
+  --chroma-o: .24; --half-o: .15;             /* 色散光环 / 半色调网点 */
+  --vign-o: .44;                              /* 镜头暗角 */
+  /* CRT 质感四件套：色散错位量 / 网点浓度 / 信号抖动频率 / 暗角浓度 */
+  --bg-chroma: 1; --bg-half: 1; --bg-glitch: 1; --bg-crt: 1;
+}
+
+/* —— 浅色基底：白底上一点色就"脏"，整体收敛到 1/3 量级 ——
+   注意只覆盖基底，倍率不动：板块差异在浅色下同样要成立 */
+[data-theme="light"] {
+  --chroma-o: .10; --half-o: .09; --vign-o: .13;
+}
+
+/* —— 板块倍率 ——
+   与 style.css 里同一批板块选择器，这里只覆盖 CRT 那四个变量，
+   所以和那边的配色 / 背景参数互不打架（CSS 变量各走各的）。 */
+[data-sec="公司"]       {
+  /* CRT 最猛的一档：信号不稳、色散明显 —— 施工现场的仪表盘 */
+  --bg-chroma: 1.25; --bg-half: 1.2; --bg-glitch: 1.35; --bg-crt: 1.25;
+}
+[data-sec="家族"]       {
+  /* CRT 压到最弱：几乎不抖、色散收回，像一台关掉了干扰的老电视 */
+  --bg-chroma: .5; --bg-half: .55; --bg-glitch: .45; --bg-crt: .65;
+}
+[data-sec="个人与人际"]  {
+  /* CRT 中性偏干净：留一点网点质感，抖动克制 */
+  --bg-chroma: 1.05; --bg-half: 1; --bg-glitch: .95; --bg-crt: 1.05;
+}
+[data-sec="未来与投资"]  {
+  /* 行情终端感：网点与色散都上一个台阶，抖动仅次于公司 */
+  --bg-chroma: 1.15; --bg-half: 1.05; --bg-glitch: 1.2; --bg-crt: 1.1;
+}
+[data-sec="附录"]       {
+  /* 查资料时背景不该抢戏：网点留着（像印刷品），抖动几乎停掉 */
+  --bg-chroma: .8; --bg-half: .9; --bg-glitch: .6; --bg-crt: .8;
+}
+
+/* —— 色散（chromatic aberration）：三层同一个大彩环，红/青各错开几像素 ——
+     模拟镜头没把三个通道合到一点时的彩边。要点：
+     ① 三层都是"环"不是"实心"：光环铺满则重叠成一片灰白，只有**边缘**错位
+        才读得出色散。
+     ② 色相不写死红青，用 hue-rotate 从当前板块主色派生 —— 家族是粉、
+        未来是金，硬编码红青进去立刻脏；旋转出来的两个补色永远跟主色同族。
+     ③ 分离量做成会呼吸的（左右两层的位移各自在关键帧里往复、相位错开），
+        读起来是"镜头在反复对焦"，而不是贴了一张静态彩边图。 */
+.fx-chroma { position: absolute; inset: 0; overflow: hidden; }
+.fx-chroma i {
+  position: absolute; inset: 0; display: block;
+  mix-blend-mode: screen; pointer-events: none;
+  opacity: calc(var(--chroma-o, .24) * var(--bg-chroma, 1));
+  /* 用 border 做那圈彩边，而不是渐变拼 —— 这是唯一"真正矩形环"的原语：
+     宽度均匀、严格贴边、且**不存在角部叠加**。前两版都栽在这上面：
+       · 112% 96% 的 radial：半径比视口大一倍多，彩环整个被推到屏幕外，
+         实测摘掉它全屏只差 0~2 级（白做）。
+       · 50% 50% 的 radial：椭圆只在四边中点与视口相切，其余位置切进画面，
+         屏幕上多出一条明显的圆弧。
+       · 四向 linear-gradient：边对了，但角上两层渐变叠加 + screen 混合，
+         右下角被抬了 +43 绿 / +39 蓝，直接过曝。
+     border + blur 一步到位：环 → 柔成"管壁辉光"，三个副本再各自
+     hue-rotate 并错位几像素，就是镜头没合焦时的彩边。 */
+  border: 16px solid color-mix(in srgb, var(--neon) 70%, transparent);
+  filter: blur(14px);
+  will-change: transform;
+}
+.fx-chroma i:nth-child(1) { filter: blur(14px) hue-rotate(-34deg); animation: fx-chroma-a 21s ease-in-out infinite; }
+.fx-chroma i:nth-child(2) { filter: blur(14px); }
+.fx-chroma i:nth-child(3) { filter: blur(14px) hue-rotate(40deg);  animation: fx-chroma-b 27s ease-in-out infinite; }
+@keyframes fx-chroma-a {
+  0%, 100% { transform: translate3d(-7px, -5px, 0); }
+  50%      { transform: translate3d(-14px, 3px, 0); }
+}
+@keyframes fx-chroma-b {
+  0%, 100% { transform: translate3d(7px, 5px, 0); }
+  50%      { transform: translate3d(14px, -3px, 0); }
+}
+
+/* —— 半色调网点：两层不同间距的点阵叠在一起 ——
+     3px 细点 + 8px 粗点、错开半格，两组频率不成整数倍，于是产生摩尔纹
+     干涉 —— 印刷网屏与 CRT 荫罩的味道都从这里来。
+     浓度是个踩过的坑：soft-light 会随网点亮度**整体提亮**，
+     第一版给到 .55（公司 .66）时右侧背景被抬了 +11 绿 / +15 蓝，
+     画面直接上一层灰雾（逐层隔离采样量出来的）。现在压到 .15 量级，
+     目标是"看得出有网纹"而整屏亮度只动 3~4 级。
+     顶部用 mask 淡出：导航与面包屑那一带信息密，不该再叠纹理。 */
+.fx-halftone {
+  position: absolute; inset: 0;
+  opacity: calc(var(--half-o, .15) * var(--bg-half, 1));
+  mix-blend-mode: soft-light;
+  background-image:
+    radial-gradient(circle, color-mix(in srgb, var(--neon) 45%, transparent) 0 .7px, transparent 1.05px),
+    radial-gradient(circle, color-mix(in srgb, var(--neon-2) 32%, transparent) 0 1.5px, transparent 2.05px);
+  background-size: 3px 3px, 8px 8px;
+  background-position: 0 0, 2px 2px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0%, #000 22%, #000 100%);
+  mask-image: linear-gradient(to bottom, transparent 0%, #000 22%, #000 100%);
+}
+
+/* —— 视口边框：色差 + 偶发信号抖动 ——
+   色差用两条反向 drop-shadow 而不是滤镜链：drop-shadow 作用于 border 的
+   实际轮廓，细线上最明显，且不需要额外的红/青副本元素。
+   抖动故意做得很"偶发"：时长十几秒，动作全部挤在关键帧开头 1.2% 内
+   （约 0.2s 抖完），剩下十几秒完全静止 —— 用 steps(1, end) 让它阶梯式跳，
+   比线性插值更像数字信号丢帧。板块倍率不同，抖的间隔也随之不同。 */
+.fx-frame {
+  animation: fx-frame-glitch calc(23s / var(--bg-glitch, 1)) steps(1, end) infinite;
+}
+@keyframes fx-frame-glitch {
+  0%     { transform: translate3d(0, 0, 0); opacity: 1; }
+  0.25%  { transform: translate3d(-3px, 1px, 0); opacity: .7; }
+  0.5%   { transform: translate3d(2px, -1px, 0); opacity: 1; }
+  0.8%   { transform: translate3d(-1px, 0, 0); opacity: .86; }
+  1.2%, 100% { transform: translate3d(0, 0, 0); opacity: 1; }
+}
+.fx-frame i,
+.fx-frame::before,
+.fx-frame::after {
+  filter: drop-shadow(1.6px 0 0 color-mix(in srgb, #ff3b6b 62%, transparent))
+          drop-shadow(-1.6px 0 0 color-mix(in srgb, #22d3ee 62%, transparent));
+}
+
+/* —— CRT 总成：暗角 + 荫罩 + 快速扫描光条 + 撕裂带 ——
+     放在顶层（8990，光带 8999 之下、边框 8900 之上），因为它要盖住正文
+     才有"整块屏幕"的感觉。强度都压得很低，阅读不受影响。
+     暗角用 background 写在容器上，荫罩写在 ::before，两者都不拦事件。 */
+.fx-crt {
+  position: fixed; inset: 0; z-index: 8990; pointer-events: none;
+  /* 0.72 的基准是为了让倍率有路可走：opacity 会被 clamp 到 [0,1]，
+     若直接写 opacity: var(--bg-crt)，公司 1.25 / 未来 1.1 / 个人 1.05
+     会被一起压成 1，三个板块的暗角实测完全相同（倍率白给）。
+     留出 1/0.72 ≈ 1.39 的上行空间后，0.47(家族) ~ 0.90(公司) 全程拉开。
+     底图的 alpha 相应从 58% 提到 72%，保证首页的观感与原先一致。 */
+  opacity: calc(.72 * var(--bg-crt, 1));
+  background: radial-gradient(132% 118% at 50% 46%, transparent 62%,
+    color-mix(in srgb, #000 72%, transparent) 100%);
+  transition: opacity .55s ease;
+}
+/* 极淡荫罩：与背景里那层网点用同一套频率，但盖在内容之上，
+   alpha 只有它的几分之一 —— 叠出"这层玻璃有网纹"而不是"画面上有噪点"。
+   压到 .16 是因为 3x 屏上 3px 间距 = 9 设备像素，点会变得很清晰可辨；
+   宁可淡到"看得出"而不是"看得清"（小屏另有再降一档的处理）。 */
+.fx-crt::before {
+  content: ""; position: absolute; inset: 0;
+  opacity: calc(var(--vign-o, .44) * .16);
+  background-image: radial-gradient(circle, rgba(150, 200, 255, .5) 0 .6px, transparent .95px);
+  background-size: 3px 3px;
+}
+/* 扫描光条：比背景那条 45vh 的柔光带更快更窄，
+   底边压一条亮线 —— 老式显示器的刷新条就是这个样子 */
+.fx-crt .beam {
+  position: absolute; left: 0; right: 0; top: -14vh; height: 14vh; display: block;
+  mix-blend-mode: screen;
+  background: linear-gradient(to bottom,
+    transparent 0%,
+    color-mix(in srgb, var(--neon) 7%, transparent) 58%,
+    color-mix(in srgb, var(--neon) 13%, transparent) 91%,
+    color-mix(in srgb, var(--neon) 30%, transparent) 100%);
+  animation: fx-beam calc(6.5s / var(--bg-rate, 1)) linear infinite;
+}
+@keyframes fx-beam { from { transform: translateY(0); } to { transform: translateY(128vh); } }
+/* 撕裂带：平时完全透明，只在抖动那一瞬亮起并横向错位。
+   形状是"一条带亮芯的横带"而不是一根细线 —— 细线读起来只是条线，
+   有亮芯 + 上下渐隐才像被撕开的一道。
+   亮芯用垂直渐变（背景）画、水平淡出用 mask 画：两个方向的需求
+   放在两个属性里，互不干扰（想用一层渐变同时做两个方向会互相吃掉 alpha）。
+   四条各自不同的时长与延迟（17/19/23/29s，互质）→ 长时间不重样，
+   不会出现"每十秒准时闪一下"的机械感。 */
+.fx-crt .tear {
+  position: absolute; left: -2%; right: -2%; display: block; opacity: 0;
+  height: 26px;
+  mix-blend-mode: screen;
+  background: linear-gradient(to bottom, transparent 0%,
+    color-mix(in srgb, var(--neon) 58%, transparent) 44%,
+    color-mix(in srgb, var(--neon) 95%, transparent) 49% 51%,
+    color-mix(in srgb, var(--neon) 58%, transparent) 56%, transparent 100%);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 13%, #000 70%, transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0%, #000 13%, #000 70%, transparent 100%);
+}
+.fx-crt .tear:nth-child(2) { top: 16%; animation: fx-tear calc(19s / var(--bg-glitch, 1)) steps(1, end) infinite; }
+.fx-crt .tear:nth-child(3) { top: 40%; animation: fx-tear calc(23s / var(--bg-glitch, 1)) steps(1, end) infinite; animation-delay: -6.4s; }
+.fx-crt .tear:nth-child(4) { top: 67%; animation: fx-tear calc(17s / var(--bg-glitch, 1)) steps(1, end) infinite; animation-delay: -11.2s; }
+.fx-crt .tear:nth-child(5) { top: 85%; animation: fx-tear calc(29s / var(--bg-glitch, 1)) steps(1, end) infinite; animation-delay: -3.1s; }
+@keyframes fx-tear {
+  0%     { opacity: 0;   transform: translate3d(0, 0, 0); }
+  0.35%  { opacity: .8;  transform: translate3d(-13px, 0, 0); }
+  0.7%   { opacity: .3;  transform: translate3d(8px, 0, 0); }
+  1.05%  { opacity: .62; transform: translate3d(-5px, 0, 0); }
+  1.5%, 100% { opacity: 0; transform: translate3d(0, 0, 0); }
+}
+
+/* —— 浅色主题：screen 混合在白底上等于没有，整体换向改 multiply ——
+     分寸要更小：白底上一点色就"脏"，加上侧栏本身是半透明的。
+     暗角尤其不能再用黑 —— 白底上压一层 58% 的黑等于给屏幕套了个黑圈，
+     换成极淡的蓝灰，只留"镜头边缘"的意思。 */
+[data-theme="light"] .fx-chroma i { mix-blend-mode: multiply; }
+[data-theme="light"] .fx-halftone { mix-blend-mode: multiply; opacity: calc(var(--half-o, .09) * .6 * var(--bg-half, 1)); }
+[data-theme="light"] .fx-crt {
+  background: radial-gradient(132% 118% at 50% 46%, transparent 70%,
+    color-mix(in srgb, #33415a 16%, transparent) 100%);
+}
+[data-theme="light"] .fx-crt::before {
+  background-image: radial-gradient(circle, rgba(40, 70, 110, .45) 0 .6px, transparent .95px);
+}
+[data-theme="light"] .fx-crt .beam { mix-blend-mode: multiply; opacity: .55; }
+[data-theme="light"] .fx-crt .tear { mix-blend-mode: multiply; }
+/* 边框色差在白底上会显脏，直接摘掉（浅色本来就该更素） */
+[data-theme="light"] .fx-frame i,
+[data-theme="light"] .fx-frame::before,
+[data-theme="light"] .fx-frame::after { filter: none; }
+
+/* —— 小屏：3px 网点会密到像噪点（何况还有 DPR 放大），整体减淡 —— */
+@media (max-width: 820px) {
+  .fx-halftone { opacity: calc(var(--half-o, .15) * .6 * var(--bg-half, 1)); }
+  /* 色散光环在小屏上占画面比例更大，也收一档 */
+  .fx-chroma i { opacity: calc(var(--chroma-o, .24) * .78 * var(--bg-chroma, 1)); }
+  /* 手机几乎都是 2~3x 屏，3px 间距的荫罩会清楚到像故障像素，再降一档；
+     暗角也收一点（小屏可视面积小，暗角占的比例更大） */
+  .fx-crt::before { opacity: calc(var(--vign-o, .44) * .08); }
+}
+
+/* —— 无障碍：尊重系统"减少动态效果" ——
+   暗角与荫罩是"构图"不是"动效"，保留（也保留色散的存在感，
+   只是停在固定错位量上）；扫描光条、撕裂带、边框抖动全关。 */
+@media (prefers-reduced-motion: reduce) {
+  .fx-crt .beam, .fx-crt .tear { display: none !important; }
+  .fx-frame { animation: none !important; }
+  .fx-chroma i { animation: none !important; }
+  .fx-chroma i:nth-child(1) { transform: translate3d(-8px, -4px, 0); }
+  .fx-chroma i:nth-child(3) { transform: translate3d(8px, 4px, 0); }
+}

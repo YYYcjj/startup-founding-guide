@@ -87,3 +87,40 @@ window.FLAT = [];
     });
   });
 })();
+
+/* —— 显示增强层（CRT 质感）的装配 ——
+   CRT 那套叠加质感单独成文件 assets/crt.css，这里只做两件事：
+     ① 注入 <link>（本文件在 <head> 里同步执行，样式随首屏一起下来）
+     ② 注入它需要的 DOM 节点：背景里的色散环 + 网点，顶层的 CRT 总成
+   想整体关掉这层质感（退回没有 CRT 的版本），注释掉下面这一段即可，
+   其余样式和排版完全不受影响。 */
+(function () {
+  var link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = "assets/crt.css";
+  document.head.appendChild(link);
+
+  function build() {
+    /* 背景层：挂在 .fx-bg 末尾（跟在颗粒层之后），层级由 z-index 决定 */
+    var bg = document.getElementById("fxBg");
+    if (bg && !bg.querySelector(".fx-chroma")) {
+      bg.insertAdjacentHTML("beforeend",
+        '<div class="fx-chroma"><i></i><i></i><i></i></div>' +
+        '<div class="fx-halftone"></div>');
+    }
+    /* 顶层：紧跟在视口边框之后、换页冲击波之前 —— 与原先的 DOM 顺序一致，
+       这样 .fx-crt（8990）与 .fx-wipe 的叠放关系不会变 */
+    var frame = document.querySelector(".fx-frame");
+    if (frame && !document.querySelector(".fx-crt")) {
+      frame.insertAdjacentHTML("afterend",
+        '<div class="fx-crt" aria-hidden="true"><i class="beam"></i>' +
+        '<i class="tear"></i><i class="tear"></i><i class="tear"></i><i class="tear"></i></div>');
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", build);
+  } else {
+    build();
+  }
+})();
